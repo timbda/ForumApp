@@ -15,6 +15,26 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
+
+    const { data: allowed, error: allowlistError } = await supabase.rpc(
+      "is_email_allowed",
+      { check_email: email },
+    );
+
+    if (allowlistError) {
+      setLoading(false);
+      setError(allowlistError.message);
+      return;
+    }
+
+    if (!allowed) {
+      setLoading(false);
+      setError(
+        "This email is not authorized to access Magnificent8Forum. Contact your moderator if you believe this is a mistake.",
+      );
+      return;
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {

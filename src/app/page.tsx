@@ -24,6 +24,14 @@ export default async function Home() {
     );
   }
 
+  const { data: profile } = await supabase
+    .from("users")
+    .select("is_moderator")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isModerator = profile?.is_moderator === true;
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-white px-4">
       <div className="text-center">
@@ -32,6 +40,9 @@ export default async function Home() {
         </h1>
         <p className="mt-4 text-gray-600">
           Logged in as {user.email}
+          {isModerator && (
+            <span className="ml-2 text-sm text-gray-400">(Moderator)</span>
+          )}
         </p>
         <SignOutButton />
       </div>
