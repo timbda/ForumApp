@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
-import { toggleMemberModerator, updateMemberName } from "./actions";
+import {
+  resetCalendarData,
+  toggleMemberModerator,
+  updateMemberName,
+} from "./actions";
 
 type Member = {
   id: string;
@@ -113,8 +117,143 @@ export function MembersList({
             />
           ))}
         </ul>
+
+        {currentUserIsModerator && <DangerZone />}
       </div>
     </main>
+  );
+}
+
+function DangerZone() {
+  const [showModal, setShowModal] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  function openModal() {
+    setResetInput("");
+    setError(null);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    if (resetting) return;
+    setShowModal(false);
+    setResetInput("");
+    setError(null);
+  }
+
+  async function handleConfirm() {
+    if (resetInput !== "RESET" || resetting) return;
+    setResetting(true);
+    setError(null);
+    try {
+      await resetCalendarData();
+      setShowModal(false);
+      setResetInput("");
+      setShowSuccess(true);
+      window.setTimeout(() => setShowSuccess(false), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  const canConfirm = resetInput === "RESET" && !resetting;
+
+  return (
+    <section className="mt-8 rounded-lg border-2 border-red-300 bg-red-50 p-4">
+      <h2 className="text-base font-semibold text-red-900">Danger zone</h2>
+      <p className="mt-1 text-sm text-red-800">
+        Wipes everyone&apos;s availability, finalized meetings, and last-reviewed
+        timestamps. User accounts, names, and moderator status are preserved.
+      </p>
+      <button
+        type="button"
+        onClick={openModal}
+        className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+      >
+        Reset calendar data
+      </button>
+
+      {showSuccess && (
+        <p className="mt-3 rounded-lg bg-green-100 px-3 py-2 text-sm text-green-800">
+          Calendar data reset.
+        </p>
+      )}
+
+      {showModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-gray-900">
+              Reset all calendar data?
+            </h3>
+
+            <div className="mt-3 space-y-2 text-sm text-gray-700">
+              <p>This will permanently delete:</p>
+              <ul className="ml-4 list-disc text-gray-600">
+                <li>Every member&apos;s availability rows</li>
+                <li>All finalized meetings</li>
+                <li>All last-reviewed timestamps</li>
+              </ul>
+              <p>The following are preserved:</p>
+              <ul className="ml-4 list-disc text-gray-600">
+                <li>User accounts and emails</li>
+                <li>Names and moderator flags</li>
+              </ul>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="block text-xs font-medium text-gray-700">
+                Type <span className="font-mono font-semibold">RESET</span> to
+                confirm
+              </span>
+              <input
+                type="text"
+                value={resetInput}
+                onChange={(e) => setResetInput(e.target.value)}
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base font-mono"
+              />
+            </label>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-700">{error}</p>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={resetting}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={!canConfirm}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resetting ? "Resetting…" : "Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

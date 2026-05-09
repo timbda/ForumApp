@@ -42,6 +42,17 @@ export async function updateMemberName(
   revalidatePath("/members");
 }
 
+export async function resetCalendarData(): Promise<void> {
+  // The SECURITY DEFINER function in migration 005 enforces the moderator
+  // check itself, but verifying here too gives us a clean error surface
+  // and matches the other moderator-only actions in this file.
+  const { supabase } = await getModeratorOrThrow();
+  const { error } = await supabase.rpc("reset_calendar_data");
+  if (error) throw error;
+  revalidatePath("/calendar");
+  revalidatePath("/members");
+}
+
 export async function toggleMemberModerator(userId: string): Promise<void> {
   const { supabase, user } = await getModeratorOrThrow();
 
