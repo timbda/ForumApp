@@ -13,6 +13,10 @@ export type InviteResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
 
+export type DeleteResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function getCallerOrThrow() {
@@ -201,6 +205,55 @@ export async function inviteMember(
 
   revalidatePath("/members");
   return { ok: true, message: `Invite sent to ${email}` };
+}
+
+export async function deleteMember(userId: string): Promise<DeleteResult> {
+  let callerId: string;
+  try {
+    const result = await getModeratorOrThrow();
+    callerId = result.user.id;
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Not a moderator",
+    };
+  }
+
+  // Refuse to delete yourself — same shape as the moderator-toggle guard.
+  // Prevents accidentally locking yourself out, and a self-delete during
+  // the action would invalidate our own session mid-call anyway.
+  if (userId === callerId) {
+    return { ok: false, error: "You can't delete your own account." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up name/email up front for a clean success message and to confirm
+  // the row exists before we issue the destructive call.
+  const { data: target, error: lookupErr } = await admin
+    .from("users")
+    .select("name, email")
+    .eq("id", userId)
+    .maybeSingle();
+  if (lookupErr) {
+    return { ok: false, error: `Lookup failed: ${lookupErr.message}` };
+  }
+  if (!target) {
+    return { ok: false, error: "Member not found." };
+  }
+
+  // Delete the auth.users row. The FKs cascade:
+  //   auth.users → public.users (ON DELETE CASCADE, migration 001)
+  //   public.users → public.availability (ON DELETE CASCADE, migration 001)
+  //   public.users ← public.meetings.finalized_by (ON DELETE SET NULL, migration 006)
+  const { error: deleteErr } = await admin.auth.admin.deleteUser(userId);
+  if (deleteErr) {
+    return { ok: false, error: `Delete failed: ${deleteErr.message}` };
+  }
+
+  revalidatePath("/members");
+  revalidatePath("/calendar");
+  return { ok: true, message: `Removed ${target.name} (${target.email})` };
 }
 
 export async function toggleMemberModerator(userId: string): Promise<void> {

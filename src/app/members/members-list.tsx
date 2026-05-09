@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
+  deleteMember,
   inviteMember,
   resetCalendarData,
   toggleMemberModerator,
@@ -169,6 +170,7 @@ export function MembersList({
         currentUserIsModerator={currentUserIsModerator}
         onClose={() => setEditing(null)}
         onSave={(changes) => editingMember && handleSave(editingMember.id, changes)}
+        onDeleted={() => setEditing(null)}
       />
 
       <AddMemberDialog open={addOpen} onClose={() => setAddOpen(false)} />
@@ -397,6 +399,7 @@ function EditDialog({
   currentUserIsModerator,
   onClose,
   onSave,
+  onDeleted,
 }: {
   member: Member | null;
   open: boolean;
@@ -404,9 +407,13 @@ function EditDialog({
   currentUserIsModerator: boolean;
   onClose: () => void;
   onSave: (changes: SaveChanges) => void;
+  onDeleted: () => void;
 }) {
   const [draftName, setDraftName] = useState(member?.name ?? "");
   const [draftMod, setDraftMod] = useState(member?.is_moderator ?? false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (member) {
@@ -414,6 +421,13 @@ function EditDialog({
       setDraftMod(member.is_moderator);
     }
   }, [member]);
+
+  useEffect(() => {
+    if (!open) {
+      setConfirmDeleteOpen(false);
+      setDeleteError(null);
+    }
+  }, [open]);
 
   if (!member) {
     return (
@@ -436,6 +450,28 @@ function EditDialog({
           : undefined,
     });
   }
+
+  async function handleDelete() {
+    if (!member || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteMember(member.id);
+      if (result.ok) {
+        toast.success(result.message);
+        setConfirmDeleteOpen(false);
+        onDeleted();
+      } else {
+        setDeleteError(result.error);
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const canDelete = currentUserIsModerator && !isSelf;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -477,15 +513,73 @@ function EditDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={!draftName.trim()}>
-            Save
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setConfirmDeleteOpen(true)}
+              disabled={deleting}
+            >
+              Delete
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={!draftName.trim()}>
+              Save
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
+
+      {canDelete && (
+        <AlertDialog
+          open={confirmDeleteOpen}
+          onOpenChange={(o) => {
+            if (!o && !deleting) {
+              setConfirmDeleteOpen(false);
+              setDeleteError(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove {member.name}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                They&apos;ll lose access to the forum immediately. Their
+                availability data is permanently deleted. Meetings they
+                finalized are kept (the &ldquo;finalized by&rdquo; attribution
+                is cleared). This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            {deleteError && (
+              <p className="text-sm text-destructive" role="alert">
+                {deleteError}
+              </p>
+            )}
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleting}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleDelete();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Removing…" : "Remove member"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </Dialog>
   );
 }
