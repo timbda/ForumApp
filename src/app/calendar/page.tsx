@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { updateLastReviewed } from "@/lib/server-actions/update-last-reviewed";
 import { Calendar } from "./calendar";
 import { formatLocalISO } from "./dates";
 
@@ -7,6 +8,12 @@ export default async function CalendarPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // Fire-and-forget: don't block the calendar render on the timestamp update.
+  // Errors are logged so unhandled promise rejections don't surface in dev.
+  updateLastReviewed().catch((err) =>
+    console.error("[updateLastReviewed]", err)
+  );
 
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
