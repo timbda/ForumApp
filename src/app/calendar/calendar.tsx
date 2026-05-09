@@ -20,15 +20,30 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { markAvailable, markUnavailable } from "./actions";
-import { finalizeMeeting, unfinalizeMeeting } from "./meeting-actions";
+import {
+  finalizeMeeting,
+  unfinalizeMeeting,
+  type FinalizeMeetingInput,
+} from "./meeting-actions";
 import { formatLocalISO } from "./dates";
 
 type MemberStatus = { name: string; last_reviewed_at: string | null };
@@ -53,7 +68,9 @@ type Month = { year: number; month: number; cells: Cell[] };
 type View = "mine" | "group";
 type AvailAction = { date: string; mark: "available" | "unavailable" };
 type FinalizedAction = { date: string; op: "add" | "remove" };
-type Confirm = { date: string; action: "finalize" | "unfinalize" };
+
+const DEFAULT_START_TIME = "16:00";
+const DEFAULT_END_TIME = "20:00";
 
 export function Calendar({
   availableDates,
@@ -67,7 +84,8 @@ export function Calendar({
   memberStatuses,
 }: CalendarProps) {
   const [view, setView] = useState<View>("mine");
-  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [finalizeForDate, setFinalizeForDate] = useState<string | null>(null);
+  const [cancelForDate, setCancelForDate] = useState<string | null>(null);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [openPopoverDate, setOpenPopoverDate] = useState<string | null>(null);
 
@@ -116,32 +134,41 @@ export function Calendar({
 
   function openConfirmFromPopover(dateISO: string) {
     setOpenPopoverDate(null);
-    setConfirm({
-      date: dateISO,
-      action: optimisticFinalized.has(dateISO) ? "unfinalize" : "finalize",
+    if (optimisticFinalized.has(dateISO)) {
+      setCancelForDate(dateISO);
+    } else {
+      setFinalizeForDate(dateISO);
+    }
+  }
+
+  function handleFinalizeSubmit(input: Omit<FinalizeMeetingInput, "date">) {
+    if (!finalizeForDate) return;
+    const dateISO = finalizeForDate;
+    setFinalizeForDate(null);
+    startTransition(async () => {
+      applyFinalized({ date: dateISO, op: "add" });
+      try {
+        await finalizeMeeting({ date: dateISO, ...input });
+        toast.success(`Meeting finalized for ${formatLongDate(dateISO)}`);
+      } catch (err) {
+        console.error("Meeting finalize failed:", err);
+        toast.error("Couldn't finalize the meeting. Please try again.");
+      }
     });
   }
 
-  function handleConfirmYes() {
-    if (!confirm) return;
-    const c = confirm;
-    setConfirm(null);
+  function handleCancelConfirm() {
+    if (!cancelForDate) return;
+    const dateISO = cancelForDate;
+    setCancelForDate(null);
     startTransition(async () => {
-      applyFinalized({
-        date: c.date,
-        op: c.action === "finalize" ? "add" : "remove",
-      });
+      applyFinalized({ date: dateISO, op: "remove" });
       try {
-        if (c.action === "finalize") {
-          await finalizeMeeting(c.date);
-          toast.success(`Meeting finalized for ${formatLongDate(c.date)}`);
-        } else {
-          await unfinalizeMeeting(c.date);
-          toast.success(`Meeting cancelled for ${formatLongDate(c.date)}`);
-        }
+        await unfinalizeMeeting(dateISO);
+        toast.success(`Meeting cancelled for ${formatLongDate(dateISO)}`);
       } catch (err) {
-        console.error("Meeting action failed:", err);
-        toast.error("Couldn't update the meeting. Please try again.");
+        console.error("Meeting cancel failed:", err);
+        toast.error("Couldn't cancel the meeting. Please try again.");
       }
     });
   }
@@ -288,10 +315,15 @@ export function Calendar({
         ))}
       </div>
 
-      <ConfirmDialog
-        confirm={confirm}
-        onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirmYes}
+      <FinalizeMeetingDialog
+        dateISO={finalizeForDate}
+        onClose={() => setFinalizeForDate(null)}
+        onSubmit={handleFinalizeSubmit}
+      />
+      <CancelMeetingDialog
+        dateISO={cancelForDate}
+        onClose={() => setCancelForDate(null)}
+        onConfirm={handleCancelConfirm}
       />
     </div>
   );
@@ -572,54 +604,177 @@ function heatmapClasses(available: number, total: number): string {
   return "bg-red-700 text-white";
 }
 
-function ConfirmDialog({
-  confirm,
-  onCancel,
+function FinalizeMeetingDialog({
+  dateISO,
+  onClose,
+  onSubmit,
+}: {
+  dateISO: string | null;
+  onClose: () => void;
+  onSubmit: (input: Omit<FinalizeMeetingInput, "date">) => void;
+}) {
+  const open = dateISO !== null;
+  const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
+  const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Each time the dialog opens for a new date, reset to defaults so the form
+  // doesn't carry over stale entries from a prior cell.
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      onClose();
+      setStartTime(DEFAULT_START_TIME);
+      setEndTime(DEFAULT_END_TIME);
+      setLocation("");
+      setNotes("");
+      setError(null);
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (toMinutes(endTime) <= toMinutes(startTime)) {
+      setError("End time must be after start time.");
+      return;
+    }
+    setError(null);
+    onSubmit({
+      startTime,
+      endTime,
+      location: location.trim() || null,
+      notes: notes.trim() || null,
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Finalize meeting</DialogTitle>
+          <DialogDescription>
+            All members will be emailed a calendar invite.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Date</Label>
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              {dateISO ? formatLongDate(dateISO) : ""}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="finalize-start">Start time</Label>
+              <Input
+                id="finalize-start"
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="finalize-end">End time</Label>
+              <Input
+                id="finalize-end"
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="finalize-location">Location (optional)</Label>
+            <Input
+              id="finalize-location"
+              placeholder="e.g. Member home in Tucker's Town"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="finalize-notes">Notes (optional)</Label>
+            <Textarea
+              id="finalize-notes"
+              placeholder="Anything members should know before the meeting"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit">Finalize and notify members</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelMeetingDialog({
+  dateISO,
+  onClose,
   onConfirm,
 }: {
-  confirm: Confirm | null;
-  onCancel: () => void;
+  dateISO: string | null;
+  onClose: () => void;
   onConfirm: () => void;
 }) {
-  const isFinalize = confirm?.action === "finalize";
-  const longDate = confirm ? formatLongDate(confirm.date) : "";
-  const open = confirm !== null;
+  const open = dateISO !== null;
+  const longDate = dateISO ? formatLongDate(dateISO) : "";
 
   return (
     <AlertDialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) onCancel();
+        if (!o) onClose();
       }}
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {isFinalize
-              ? `Finalize meeting on ${longDate}?`
-              : `Cancel meeting on ${longDate}?`}
-          </AlertDialogTitle>
+          <AlertDialogTitle>Cancel meeting on {longDate}?</AlertDialogTitle>
           <AlertDialogDescription>
             All members will be notified.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>
-            {isFinalize ? "Cancel" : "Keep"}
-          </AlertDialogCancel>
+          <AlertDialogCancel onClick={onClose}>Keep</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
-            className={cn(
-              !isFinalize &&
-                "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            )}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {isFinalize ? "Finalize" : "Cancel meeting"}
+            Cancel meeting
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
 }
 
 function lastReviewedLabel(iso: string | null): string {
