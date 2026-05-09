@@ -53,7 +53,7 @@ export default async function Home() {
           </a>
           <a
             href="/members"
-            className="inline-block rounded-lg border border-gray-300 px-6 py-3 font-medium text-gray-900 hover:bg-gray-50"
+            className="inline-block rounded-lg bg-gray-900 px-6 py-3 font-medium text-white hover:bg-gray-800"
           >
             Members
           </a>

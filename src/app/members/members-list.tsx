@@ -150,6 +150,9 @@ function MemberRow({
                 <span className="text-xs text-gray-400">(Moderator)</span>
               )}
             </div>
+            <p className="mt-0.5 truncate text-sm text-gray-600">
+              {member.email}
+            </p>
             <p className="mt-0.5 text-xs text-gray-500">
               {lastReviewedLabel(member.last_reviewed_at)}
             </p>
