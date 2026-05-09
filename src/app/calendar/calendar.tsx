@@ -170,14 +170,14 @@ export function Calendar({
     });
   }
 
-  function handleCancelConfirm() {
+  function handleCancelConfirm(reason: string | null) {
     if (!cancelForDate) return;
     const dateISO = cancelForDate;
     setCancelForDate(null);
     startTransition(async () => {
       applyFinalized({ date: dateISO, op: "remove" });
       try {
-        await unfinalizeMeeting(dateISO);
+        await unfinalizeMeeting(dateISO, reason);
         toast.success(`Meeting cancelled for ${formatLongDate(dateISO)}`);
       } catch (err) {
         console.error("Meeting cancel failed:", err);
@@ -776,18 +776,21 @@ function CancelMeetingDialog({
 }: {
   dateISO: string | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (reason: string | null) => void;
 }) {
   const open = dateISO !== null;
   const longDate = dateISO ? formatLongDate(dateISO) : "";
+  const [reason, setReason] = useState("");
+
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      onClose();
+      setReason("");
+    }
+  }
 
   return (
-    <AlertDialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Cancel meeting on {longDate}?</AlertDialogTitle>
@@ -795,10 +798,28 @@ function CancelMeetingDialog({
             All members will be notified.
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cancel-reason">Reason for cancellation (optional)</Label>
+          <Textarea
+            id="cancel-reason"
+            placeholder="Anything you want members to know"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+          />
+        </div>
+
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onClose}>Keep</AlertDialogCancel>
+          <AlertDialogCancel onClick={() => handleOpenChange(false)}>
+            Keep
+          </AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            onClick={() => {
+              const trimmed = reason.trim();
+              setReason("");
+              onConfirm(trimmed || null);
+            }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             Cancel meeting
