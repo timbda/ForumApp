@@ -82,11 +82,19 @@ export function MembersList({
   return (
     <main className="min-h-screen bg-white pb-12">
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold text-gray-900">Members</h1>
-          <a href="/" className="text-sm text-gray-600 hover:text-gray-900">
-            Home
-          </a>
+          <nav className="flex items-center gap-3 text-sm text-gray-600">
+            <a href="/calendar" className="hover:text-gray-900">
+              My Availability
+            </a>
+            <span aria-hidden="true" className="text-gray-300">
+              ·
+            </span>
+            <a href="/" className="hover:text-gray-900">
+              Home
+            </a>
+          </nav>
         </div>
       </header>
 
@@ -157,7 +165,7 @@ function MemberRow({
               {lastReviewedLabel(member.last_reviewed_at)}
             </p>
           </div>
-          {currentUserIsModerator && (
+          {(isSelf || currentUserIsModerator) && (
             <button
               type="button"
               onClick={onEdit}
@@ -171,13 +179,17 @@ function MemberRow({
     );
   }
 
+  const canToggleModerator = currentUserIsModerator && !isSelf;
+
   function handleSave() {
     const trimmed = draftName.trim();
     if (!trimmed) return;
     onSave({
       newName: trimmed !== member.name ? trimmed : undefined,
       newModerator:
-        !isSelf && draftMod !== member.is_moderator ? draftMod : undefined,
+        canToggleModerator && draftMod !== member.is_moderator
+          ? draftMod
+          : undefined,
     });
   }
 
@@ -196,7 +208,7 @@ function MemberRow({
           />
         </label>
 
-        {!isSelf ? (
+        {canToggleModerator && (
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -206,7 +218,8 @@ function MemberRow({
             />
             Moderator
           </label>
-        ) : (
+        )}
+        {currentUserIsModerator && isSelf && (
           <p className="text-xs text-gray-500">
             You can&apos;t change your own moderator flag — ask another moderator
             to do it.

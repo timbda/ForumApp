@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-async function getModeratorOrThrow() {
+async function getCallerOrThrow() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -12,8 +12,13 @@ async function getModeratorOrThrow() {
     .select("is_moderator")
     .eq("id", user.id)
     .maybeSingle();
-  if (!profile?.is_moderator) throw new Error("Not a moderator");
-  return { supabase, user };
+  return { supabase, user, isModerator: profile?.is_moderator === true };
+}
+
+async function getModeratorOrThrow() {
+  const result = await getCallerOrThrow();
+  if (!result.isModerator) throw new Error("Not a moderator");
+  return result;
 }
 
 export async function updateMemberName(
@@ -23,7 +28,12 @@ export async function updateMemberName(
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
 
-  const { supabase } = await getModeratorOrThrow();
+  const { supabase, user, isModerator } = await getCallerOrThrow();
+  // Members can rename themselves; moderators can rename anyone.
+  if (userId !== user.id && !isModerator) {
+    throw new Error("Only moderators can edit other members' names");
+  }
+
   const { error } = await supabase
     .from("users")
     .update({ name: trimmed })

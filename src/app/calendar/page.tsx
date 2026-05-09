@@ -41,7 +41,7 @@ export default async function CalendarPage() {
       .select("date")
       .gte("date", startISO)
       .lte("date", endISO),
-    supabase.from("users").select("last_reviewed_at"),
+    supabase.from("users").select("name, last_reviewed_at").order("name"),
     supabase
       .from("users")
       .select("is_moderator")
@@ -74,6 +74,11 @@ export default async function CalendarPage() {
       new Date(u.last_reviewed_at as string).getTime() >= thirtyDaysAgoMs
   ).length;
 
+  const memberStatuses = allUsers.map((u) => ({
+    name: (u.name as string | null) ?? "(unnamed)",
+    last_reviewed_at: (u.last_reviewed_at as string | null) ?? null,
+  }));
+
   return (
     <Calendar
       availableDates={availableDates}
@@ -82,6 +87,7 @@ export default async function CalendarPage() {
       totalMembers={totalMembers}
       isModerator={isModerator}
       reviewedRecentlyCount={reviewedRecentlyCount}
+      memberStatuses={memberStatuses}
     />
   );
 }

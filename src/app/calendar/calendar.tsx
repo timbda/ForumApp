@@ -5,6 +5,8 @@ import { markAvailable, markUnavailable } from "./actions";
 import { finalizeMeeting, unfinalizeMeeting } from "./meeting-actions";
 import { formatLocalISO } from "./dates";
 
+type MemberStatus = { name: string; last_reviewed_at: string | null };
+
 type CalendarProps = {
   availableDates: string[];
   availabilityCounts: Record<string, number>;
@@ -12,6 +14,7 @@ type CalendarProps = {
   totalMembers: number;
   isModerator: boolean;
   reviewedRecentlyCount: number;
+  memberStatuses: MemberStatus[];
 };
 
 type Cell = { day: number; iso: string } | null;
@@ -29,9 +32,11 @@ export function Calendar({
   totalMembers,
   isModerator,
   reviewedRecentlyCount,
+  memberStatuses,
 }: CalendarProps) {
   const [view, setView] = useState<View>("mine");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [bannerExpanded, setBannerExpanded] = useState(false);
 
   const [optimisticAvail, applyAvail] = useOptimistic<
     Set<string>,
@@ -144,10 +149,48 @@ export function Calendar({
 
       <div className="mx-auto max-w-md px-3">
         {view === "group" && (
-          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            {reviewedRecentlyCount} of {totalMembers} members have reviewed
-            their availability in the last 30 days.
-          </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setBannerExpanded((v) => !v)}
+              aria-expanded={bannerExpanded}
+              className="flex w-full items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-100"
+            >
+              <span>
+                {reviewedRecentlyCount} of {totalMembers} members have reviewed
+                their availability in the last 30 days.
+              </span>
+              <span aria-hidden="true" className="text-gray-400">
+                {bannerExpanded ? "▴" : "▾"}
+              </span>
+            </button>
+            {bannerExpanded && (
+              <ul className="mt-2 divide-y divide-gray-200 rounded-lg border border-gray-200">
+                {memberStatuses.map((m, idx) => {
+                  const status = reviewedStatusIcon(m.last_reviewed_at);
+                  return (
+                    <li
+                      key={`${m.name}-${idx}`}
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                    >
+                      <span className="truncate text-gray-900">{m.name}</span>
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                        {status && (
+                          <span
+                            aria-hidden="true"
+                            className={`inline-block w-3 text-center ${status.cls}`}
+                          >
+                            {status.icon}
+                          </span>
+                        )}
+                        {lastReviewedLabel(m.last_reviewed_at)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
         {months.map((m) => (
           <section key={`${m.year}-${m.month}`} className="mt-6">
@@ -370,6 +413,40 @@ function ConfirmDialog({
       </div>
     </div>
   );
+}
+
+function lastReviewedLabel(iso: string | null): string {
+  if (!iso) return "Not yet reviewed";
+  const reviewedAt = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - reviewedAt.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays > 30) {
+    return `Reviewed ${reviewedAt.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })}`;
+  }
+  if (diffDays === 0) {
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours === 0) return "Reviewed just now";
+    return `Reviewed ${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  }
+  if (diffDays === 1) return "Reviewed 1 day ago";
+  return `Reviewed ${diffDays} days ago`;
+}
+
+function reviewedStatusIcon(
+  iso: string | null
+): { icon: string; cls: string } | null {
+  if (iso === null) return { icon: "⊘", cls: "text-gray-400" };
+  const reviewedAt = new Date(iso).getTime();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  if (Date.now() - reviewedAt <= thirtyDaysMs) {
+    return { icon: "✓", cls: "text-green-600" };
+  }
+  return null;
 }
 
 function formatLongDate(iso: string): string {
