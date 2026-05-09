@@ -258,14 +258,21 @@ function renderGroupCell(args: {
     onClick,
   } = args;
   const base =
-    "flex aspect-square min-h-[44px] items-center justify-center rounded-lg border border-transparent text-sm font-semibold";
+    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none";
   const heat = heatmapClasses(availCount, totalMembers);
   const ring = ringClass(isFinalized, isToday);
   const label = `${cell.iso}: ${availCount} of ${totalMembers} available${
     isFinalized ? " (finalized meeting)" : ""
   }`;
-  const content =
+  const countText =
     totalMembers > 0 ? `${availCount}/${totalMembers}` : String(availCount);
+
+  const content = (
+    <>
+      <span className="text-base font-semibold">{cell.day}</span>
+      <span className="text-[10px] font-medium opacity-90">{countText}</span>
+    </>
+  );
 
   if (interactive) {
     return (
