@@ -6,8 +6,8 @@ import { finalizeMeeting, unfinalizeMeeting } from "./meeting-actions";
 import { formatLocalISO } from "./dates";
 
 type CalendarProps = {
-  unavailableDates: string[];
-  unavailabilityCounts: Record<string, number>;
+  availableDates: string[];
+  availabilityCounts: Record<string, number>;
   finalizedDates: string[];
   totalMembers: number;
   isModerator: boolean;
@@ -17,13 +17,13 @@ type Cell = { day: number; iso: string } | null;
 type Month = { year: number; month: number; cells: Cell[] };
 
 type View = "mine" | "group";
-type UnavailAction = { date: string; mark: "unavailable" | "available" };
+type AvailAction = { date: string; mark: "available" | "unavailable" };
 type FinalizedAction = { date: string; op: "add" | "remove" };
 type Confirm = { date: string; action: "finalize" | "unfinalize" };
 
 export function Calendar({
-  unavailableDates,
-  unavailabilityCounts,
+  availableDates,
+  availabilityCounts,
   finalizedDates,
   totalMembers,
   isModerator,
@@ -31,12 +31,12 @@ export function Calendar({
   const [view, setView] = useState<View>("mine");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
-  const [optimisticUnavail, applyUnavail] = useOptimistic<
+  const [optimisticAvail, applyAvail] = useOptimistic<
     Set<string>,
-    UnavailAction
-  >(new Set(unavailableDates), (state, action) => {
+    AvailAction
+  >(new Set(availableDates), (state, action) => {
     const next = new Set(state);
-    if (action.mark === "unavailable") next.add(action.date);
+    if (action.mark === "available") next.add(action.date);
     else next.delete(action.date);
     return next;
   });
@@ -58,15 +58,15 @@ export function Calendar({
   const months = generateMonths(today, 12);
 
   function handleMineToggle(dateISO: string) {
-    const isUnavail = optimisticUnavail.has(dateISO);
+    const isAvail = optimisticAvail.has(dateISO);
     startTransition(async () => {
-      applyUnavail({
+      applyAvail({
         date: dateISO,
-        mark: isUnavail ? "available" : "unavailable",
+        mark: isAvail ? "unavailable" : "available",
       });
       try {
-        if (isUnavail) await markAvailable(dateISO);
-        else await markUnavailable(dateISO);
+        if (isAvail) await markUnavailable(dateISO);
+        else await markAvailable(dateISO);
       } catch (err) {
         console.error("Toggle failed:", err);
       }
@@ -110,6 +110,9 @@ export function Calendar({
         </div>
         <p className="mt-1 text-xs text-gray-500">
           Changes save automatically.
+        </p>
+        <p className="mt-1 text-xs text-gray-500">
+          All dates start as unavailable. Tap a date to mark yourself available.
         </p>
         <div className="mt-3 flex rounded-lg border border-gray-300 p-0.5">
           <button
@@ -163,7 +166,7 @@ export function Calendar({
                   return renderMineCell({
                     key: i,
                     cell,
-                    isUnavail: optimisticUnavail.has(iso),
+                    isAvail: optimisticAvail.has(iso),
                     isFinalized,
                     isToday,
                     isPast,
@@ -171,8 +174,7 @@ export function Calendar({
                   });
                 }
 
-                const unavailCount = unavailabilityCounts[iso] ?? 0;
-                const availCount = Math.max(0, totalMembers - unavailCount);
+                const availCount = availabilityCounts[iso] ?? 0;
                 return renderGroupCell({
                   key: i,
                   cell,
@@ -203,32 +205,28 @@ export function Calendar({
 function renderMineCell(args: {
   key: number;
   cell: { day: number; iso: string };
-  isUnavail: boolean;
+  isAvail: boolean;
   isFinalized: boolean;
   isToday: boolean;
   isPast: boolean;
   onClick: () => void;
 }) {
-  const { key, cell, isUnavail, isFinalized, isToday, isPast, onClick } = args;
+  const { key, cell, isAvail, isFinalized, isToday, isPast, onClick } = args;
   const base =
     "flex aspect-square min-h-[44px] items-center justify-center rounded-lg border text-base font-medium transition-colors";
-  let style: string;
-  if (isUnavail) {
-    style = "border-red-300 bg-red-100 text-red-700 line-through";
-  } else if (isPast) {
-    style = "border-gray-200 bg-white text-gray-400 hover:bg-gray-50";
-  } else {
-    style = "border-gray-200 bg-white text-gray-900 hover:bg-gray-50";
-  }
+  const style = isAvail
+    ? "border-green-400 bg-green-100 text-green-800 hover:bg-green-50"
+    : "border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-50";
+  const past = isPast ? " opacity-60" : "";
   const ring = ringClass(isFinalized, isToday);
   return (
     <button
       key={key}
       type="button"
       onClick={onClick}
-      className={`${base} ${style}${ring}`}
-      aria-pressed={isUnavail}
-      aria-label={`${cell.iso}${isUnavail ? " (unavailable)" : ""}${
+      className={`${base} ${style}${past}${ring}`}
+      aria-pressed={isAvail}
+      aria-label={`${cell.iso}${isAvail ? " (available)" : " (unavailable)"}${
         isFinalized ? " (finalized meeting)" : ""
       }`}
     >

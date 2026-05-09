@@ -41,8 +41,8 @@ The moderator role is a boolean flag on a user, not hardcoded. It must be transf
 
 ### Availability
 - Each member has an availability state for every Mon–Thu in a rolling 12-month window from today.
-- **Default state for every Mon–Thu is "available."**
-- Members mark dates "unavailable" by tapping. Tapping again reverts to available.
+- **Default state for every Mon–Thu is "unavailable."**
+- Members mark dates "available" by tapping. Tapping again reverts to unavailable.
 - Members can update their availability at any time.
 - All members can view every other member's availability.
 
@@ -95,7 +95,7 @@ users (
 availability (
   user_id uuid references users(id) on delete cascade,
   date date not null,             -- must be Mon-Thu
-  -- Only "unavailable" rows are stored. Absence of a row = available (default).
+  -- Only "available" rows are stored. Absence of a row = unavailable (default).
   primary key (user_id, date)
 )
 

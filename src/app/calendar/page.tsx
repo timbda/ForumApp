@@ -19,7 +19,7 @@ export default async function CalendarPage() {
   const endISO = formatLocalISO(endOfWindow);
 
   const [
-    allUnavailRes,
+    allAvailRes,
     meetingsRes,
     membersCountRes,
     profileRes,
@@ -42,16 +42,16 @@ export default async function CalendarPage() {
       .maybeSingle(),
   ]);
 
-  const allUnavail = allUnavailRes.data ?? [];
+  const allAvail = allAvailRes.data ?? [];
 
-  const unavailableDates = allUnavail
+  const availableDates = allAvail
     .filter((r) => r.user_id === user.id)
     .map((r) => r.date as string);
 
-  const unavailabilityCounts: Record<string, number> = {};
-  for (const row of allUnavail) {
+  const availabilityCounts: Record<string, number> = {};
+  for (const row of allAvail) {
     const d = row.date as string;
-    unavailabilityCounts[d] = (unavailabilityCounts[d] ?? 0) + 1;
+    availabilityCounts[d] = (availabilityCounts[d] ?? 0) + 1;
   }
 
   const finalizedDates = (meetingsRes.data ?? []).map((m) => m.date as string);
@@ -60,8 +60,8 @@ export default async function CalendarPage() {
 
   return (
     <Calendar
-      unavailableDates={unavailableDates}
-      unavailabilityCounts={unavailabilityCounts}
+      availableDates={availableDates}
+      availabilityCounts={availabilityCounts}
       finalizedDates={finalizedDates}
       totalMembers={totalMembers}
       isModerator={isModerator}

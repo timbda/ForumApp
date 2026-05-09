@@ -18,7 +18,10 @@ async function getUserOrThrow() {
   return { supabase, user };
 }
 
-export async function markUnavailable(date: string): Promise<void> {
+// A row in public.availability means the member is AVAILABLE on that date.
+// Absence of a row = unavailable (default).
+
+export async function markAvailable(date: string): Promise<void> {
   if (!ISO_RE.test(date) || !isMonThu(date)) {
     throw new Error("Invalid date");
   }
@@ -30,7 +33,7 @@ export async function markUnavailable(date: string): Promise<void> {
   revalidatePath("/calendar");
 }
 
-export async function markAvailable(date: string): Promise<void> {
+export async function markUnavailable(date: string): Promise<void> {
   if (!ISO_RE.test(date) || !isMonThu(date)) {
     throw new Error("Invalid date");
   }
