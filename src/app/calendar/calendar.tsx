@@ -109,11 +109,19 @@ export function Calendar({
   return (
     <main className="min-h-screen bg-white pb-12">
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold text-gray-900">My Availability</h1>
-          <a href="/" className="text-sm text-gray-600 hover:text-gray-900">
-            Home
-          </a>
+          <nav className="flex items-center gap-3 text-sm text-gray-600">
+            <a href="/members" className="hover:text-gray-900">
+              Members
+            </a>
+            <span aria-hidden="true" className="text-gray-300">
+              ·
+            </span>
+            <a href="/" className="hover:text-gray-900">
+              Home
+            </a>
+          </nav>
         </div>
         <p className="mt-1 text-xs text-gray-500">
           Changes save automatically.
@@ -154,14 +162,24 @@ export function Calendar({
               type="button"
               onClick={() => setBannerExpanded((v) => !v)}
               aria-expanded={bannerExpanded}
-              className="flex w-full items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-100"
+              className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-left text-sm font-medium text-blue-900 hover:bg-blue-100 active:bg-blue-100"
             >
-              <span>
-                {reviewedRecentlyCount} of {totalMembers} members have reviewed
-                their availability in the last 30 days.
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">
+                  {reviewedRecentlyCount} of {totalMembers} members reviewed
+                  availability in the last 30 days
+                </span>
+                {!bannerExpanded && (
+                  <span className="mt-0.5 block text-xs font-normal text-blue-700">
+                    Tap to see who has and hasn&apos;t reviewed
+                  </span>
+                )}
               </span>
-              <span aria-hidden="true" className="text-gray-400">
-                {bannerExpanded ? "▴" : "▾"}
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-base text-blue-700"
+              >
+                {bannerExpanded ? "▲" : "▼"}
               </span>
             </button>
             {bannerExpanded && (
