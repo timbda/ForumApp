@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarDays, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ErrorFallback } from "@/components/error-fallback";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   createClient,
   getUserWithRetry,
@@ -68,20 +70,61 @@ export default async function Home() {
           </p>
         </header>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          <ActionCard
-            href="/calendar"
-            icon={<CalendarDays className="h-6 w-6" />}
-            title="My Availability"
-            description="Mark which dates you're available for the next 12 months."
-          />
-          <ActionCard
-            href="/members"
-            icon={<Users className="h-6 w-6" />}
-            title="Members"
-            description="See the forum's eight members and who has reviewed availability."
-          />
-        </div>
+        <section className="mt-8">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">
+              Forum Meetings
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Schedule and manage your forum&apos;s group meetings.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <ActionCard
+              href="/calendar"
+              icon={<CalendarDays className="h-6 w-6" />}
+              title="My Availability"
+              description="Mark which dates you're available for the next 12 months."
+            />
+            <ActionCard
+              href="/members"
+              icon={<Users className="h-6 w-6" />}
+              title="Members"
+              description="See the forum's eight members and who has reviewed availability."
+            />
+          </div>
+        </section>
+
+        <Separator className="my-10" />
+
+        <section aria-labelledby="stir-fry-heading">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                id="stir-fry-heading"
+                className="text-xl font-semibold tracking-tight"
+              >
+                Stir Fry 1:1 Meetings
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Arrange and track one-on-one coffee or lunch meetings between
+                forum members. The goal: every member meets every other member
+                at least once a year.
+              </p>
+            </div>
+            <Badge variant="secondary" className="shrink-0">
+              Coming Soon
+            </Badge>
+          </div>
+
+          <div className="mt-4 cursor-default rounded-lg border bg-muted/40 p-6 text-muted-foreground">
+            <p className="text-sm leading-relaxed">
+              When this is ready you&apos;ll be able to schedule a coffee or
+              lunch with any other forum member, log meetings as they happen,
+              and see at a glance which pairs still need to meet this year.
+            </p>
+          </div>
+        </section>
       </div>
     </AppShell>
   );
