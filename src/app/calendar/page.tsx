@@ -15,15 +15,56 @@ export default async function CalendarPage() {
     today.getMonth() + 12,
     0
   );
+  const startISO = formatLocalISO(startOfMonth);
+  const endISO = formatLocalISO(endOfWindow);
 
-  const { data: rows } = await supabase
-    .from("availability")
-    .select("date")
-    .eq("user_id", user.id)
-    .gte("date", formatLocalISO(startOfMonth))
-    .lte("date", formatLocalISO(endOfWindow));
+  const [
+    allUnavailRes,
+    meetingsRes,
+    membersCountRes,
+    profileRes,
+  ] = await Promise.all([
+    supabase
+      .from("availability")
+      .select("user_id, date")
+      .gte("date", startISO)
+      .lte("date", endISO),
+    supabase
+      .from("meetings")
+      .select("date")
+      .gte("date", startISO)
+      .lte("date", endISO),
+    supabase.from("users").select("*", { count: "exact", head: true }),
+    supabase
+      .from("users")
+      .select("is_moderator")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
-  const unavailableDates = (rows ?? []).map((r) => r.date as string);
+  const allUnavail = allUnavailRes.data ?? [];
 
-  return <Calendar unavailableDates={unavailableDates} />;
+  const unavailableDates = allUnavail
+    .filter((r) => r.user_id === user.id)
+    .map((r) => r.date as string);
+
+  const unavailabilityCounts: Record<string, number> = {};
+  for (const row of allUnavail) {
+    const d = row.date as string;
+    unavailabilityCounts[d] = (unavailabilityCounts[d] ?? 0) + 1;
+  }
+
+  const finalizedDates = (meetingsRes.data ?? []).map((m) => m.date as string);
+  const totalMembers = membersCountRes.count ?? 0;
+  const isModerator = profileRes.data?.is_moderator === true;
+
+  return (
+    <Calendar
+      unavailableDates={unavailableDates}
+      unavailabilityCounts={unavailabilityCounts}
+      finalizedDates={finalizedDates}
+      totalMembers={totalMembers}
+      isModerator={isModerator}
+    />
+  );
 }
