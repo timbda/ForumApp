@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -7,6 +8,12 @@ import { createClient } from "@/lib/supabase/server";
 export type ResetResult =
   | { ok: true; message: string }
   | { ok: false; message: string };
+
+export type InviteResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function getCallerOrThrow() {
   const supabase = await createClient();
@@ -107,6 +114,93 @@ export async function resetCalendarData(): Promise<ResetResult> {
       message: err instanceof Error ? err.message : "Unknown error",
     };
   }
+}
+
+export async function inviteMember(
+  rawEmail: string,
+  rawName: string,
+  makeModerator: boolean
+): Promise<InviteResult> {
+  // 1. Authorize: only moderators can invite.
+  try {
+    await getModeratorOrThrow();
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Not a moderator",
+    };
+  }
+
+  // 2. Validate inputs.
+  const email = rawEmail.trim().toLowerCase();
+  const name = rawName.trim();
+  if (!email || !EMAIL_RE.test(email)) {
+    return { ok: false, error: "Please enter a valid email address." };
+  }
+  if (!name) {
+    return { ok: false, error: "Name is required." };
+  }
+
+  const admin = createAdminClient();
+
+  // 3. Pre-check: don't invite someone who's already a member.
+  const { data: existing, error: checkErr } = await admin
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (checkErr) {
+    return { ok: false, error: `Lookup failed: ${checkErr.message}` };
+  }
+  if (existing) {
+    return { ok: false, error: "This email is already a member." };
+  }
+
+  // 4. Compute the redirect URL from the incoming request headers so the
+  //    invite link points back at whatever environment is sending it
+  //    (localhost in dev, the deployed origin in prod).
+  const h = headers();
+  const host = h.get("host") ?? "";
+  const proto =
+    h.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+  const redirectTo = `${proto}://${host}/auth/callback?next=/`;
+
+  // 5. Send the invite via Supabase admin API. This creates auth.users and
+  //    fires the invite email through the configured SMTP.
+  const { data: invited, error: inviteErr } =
+    await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
+  if (inviteErr) {
+    return { ok: false, error: `Invite failed: ${inviteErr.message}` };
+  }
+  const newUserId = invited.user?.id;
+  if (!newUserId) {
+    return {
+      ok: false,
+      error: "Invite succeeded but the new user id was not returned.",
+    };
+  }
+
+  // 6. Mirror the row into public.users so the allowlist check on first
+  //    login (is_email_allowed) lets them in. If this insert fails after the
+  //    auth row was created we log loudly but don't bubble — the moderator
+  //    can edit the member afterwards if needed.
+  const { error: insertErr } = await admin.from("users").insert({
+    id: newUserId,
+    email,
+    name,
+    is_moderator: makeModerator,
+    last_reviewed_at: null,
+  });
+  if (insertErr) {
+    console.error(
+      `[inviteMember] auth user ${newUserId} created but public.users insert failed:`,
+      insertErr
+    );
+  }
+
+  revalidatePath("/members");
+  return { ok: true, message: `Invite sent to ${email}` };
 }
 
 export async function toggleMemberModerator(userId: string): Promise<void> {

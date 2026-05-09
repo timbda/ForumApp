@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -29,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
+  inviteMember,
   resetCalendarData,
   toggleMemberModerator,
   updateMemberName,
@@ -81,6 +83,7 @@ export function MembersList({
   );
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const editingMember = optimisticMembers.find((m) => m.id === editing) ?? null;
 
@@ -125,12 +128,20 @@ export function MembersList({
 
   return (
     <div>
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {optimisticMembers.length}{" "}
-          {optimisticMembers.length === 1 ? "member" : "members"} in the forum.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {optimisticMembers.length}{" "}
+            {optimisticMembers.length === 1 ? "member" : "members"} in the forum.
+          </p>
+        </div>
+        {currentUserIsModerator && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add member
+          </Button>
+        )}
       </header>
 
       <div className="mx-auto mt-6 max-w-2xl">
@@ -159,7 +170,150 @@ export function MembersList({
         onClose={() => setEditing(null)}
         onSave={(changes) => editingMember && handleSave(editingMember.id, changes)}
       />
+
+      <AddMemberDialog open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
+  );
+}
+
+function AddMemberDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [makeModerator, setMakeModerator] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  function reset() {
+    setEmail("");
+    setName("");
+    setMakeModerator(false);
+    setError(null);
+  }
+
+  function handleClose() {
+    if (submitting) return;
+    onClose();
+    reset();
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    const trimmedEmail = email.trim();
+    const trimmedName = name.trim();
+    if (!trimmedEmail) {
+      setError("Email is required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (!trimmedName) {
+      setError("Name is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await inviteMember(
+        trimmedEmail,
+        trimmedName,
+        makeModerator
+      );
+      if (result.ok) {
+        toast.success(result.message);
+        onClose();
+        reset();
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send invite.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Add member</DialogTitle>
+            <DialogDescription>
+              They&apos;ll receive an invite email with a link that signs them
+              in.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="member@example.com"
+                disabled={submitting}
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-name">Name</Label>
+              <Input
+                id="invite-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jane Doe"
+                disabled={submitting}
+              />
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={makeModerator}
+                onChange={(e) => setMakeModerator(e.target.checked)}
+                disabled={submitting}
+                className="h-4 w-4 rounded border-input"
+              />
+              <span>Make moderator</span>
+            </label>
+
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Sending…" : "Send invite"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
