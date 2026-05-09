@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { ChevronDown } from "lucide-react";
+import { CheckCircle2, ChevronDown, Clock } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -13,11 +13,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { markAvailable, markUnavailable } from "./actions";
@@ -29,12 +36,16 @@ type MemberStatus = { name: string; last_reviewed_at: string | null };
 type CalendarProps = {
   availableDates: string[];
   availabilityCounts: Record<string, number>;
+  availabilityByDate: Record<string, string[]>;
   finalizedDates: string[];
+  meetingLocations: Record<string, string | null>;
   totalMembers: number;
   isModerator: boolean;
   reviewedRecentlyCount: number;
   memberStatuses: MemberStatus[];
 };
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 type Cell = { day: number; iso: string } | null;
 type Month = { year: number; month: number; cells: Cell[] };
@@ -47,7 +58,9 @@ type Confirm = { date: string; action: "finalize" | "unfinalize" };
 export function Calendar({
   availableDates,
   availabilityCounts,
+  availabilityByDate,
   finalizedDates,
+  meetingLocations,
   totalMembers,
   isModerator,
   reviewedRecentlyCount,
@@ -56,6 +69,7 @@ export function Calendar({
   const [view, setView] = useState<View>("mine");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [bannerOpen, setBannerOpen] = useState(false);
+  const [openPopoverDate, setOpenPopoverDate] = useState<string | null>(null);
 
   const [optimisticAvail, applyAvail] = useOptimistic<
     Set<string>,
@@ -100,8 +114,8 @@ export function Calendar({
     });
   }
 
-  function handleGroupTap(dateISO: string) {
-    if (!isModerator) return;
+  function openConfirmFromPopover(dateISO: string) {
+    setOpenPopoverDate(null);
     setConfirm({
       date: dateISO,
       action: optimisticFinalized.has(dateISO) ? "unfinalize" : "finalize",
@@ -249,16 +263,25 @@ export function Calendar({
                 }
 
                 const availCount = availabilityCounts[iso] ?? 0;
-                return renderGroupCell({
-                  key: i,
-                  cell,
-                  availCount,
-                  totalMembers,
-                  isFinalized,
-                  isToday,
-                  interactive: isModerator,
-                  onClick: isModerator ? () => handleGroupTap(iso) : undefined,
-                });
+                return (
+                  <GroupCell
+                    key={i}
+                    cell={cell}
+                    availCount={availCount}
+                    totalMembers={totalMembers}
+                    isFinalized={isFinalized}
+                    isToday={isToday}
+                    isModerator={isModerator}
+                    open={openPopoverDate === iso}
+                    onOpenChange={(o) =>
+                      setOpenPopoverDate(o ? iso : null)
+                    }
+                    availableNames={availabilityByDate[iso] ?? []}
+                    meetingLocation={meetingLocations[iso] ?? null}
+                    memberStatuses={memberStatuses}
+                    onAction={() => openConfirmFromPopover(iso)}
+                  />
+                );
               })}
             </div>
           </section>
@@ -308,25 +331,33 @@ function renderMineCell(args: {
   );
 }
 
-function renderGroupCell(args: {
-  key: number;
+function GroupCell(args: {
   cell: { day: number; iso: string };
   availCount: number;
   totalMembers: number;
   isFinalized: boolean;
   isToday: boolean;
-  interactive: boolean;
-  onClick?: () => void;
+  isModerator: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableNames: string[];
+  meetingLocation: string | null;
+  memberStatuses: MemberStatus[];
+  onAction: () => void;
 }) {
   const {
-    key,
     cell,
     availCount,
     totalMembers,
     isFinalized,
     isToday,
-    interactive,
-    onClick,
+    isModerator,
+    open,
+    onOpenChange,
+    availableNames,
+    meetingLocation,
+    memberStatuses,
+    onAction,
   } = args;
   const heat = heatmapClasses(availCount, totalMembers);
   const label = `${cell.iso}: ${availCount} of ${totalMembers} available${
@@ -336,36 +367,197 @@ function renderGroupCell(args: {
     totalMembers > 0 ? `${availCount}/${totalMembers}` : String(availCount);
 
   const cls = cn(
-    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
     heat,
     isToday && !isFinalized && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
-    isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background",
-    interactive && "hover:opacity-90"
+    isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background"
   );
 
-  const content = (
-    <>
-      <span className="text-base font-semibold">{cell.day}</span>
-      <span className="text-[10px] font-medium opacity-90">{countText}</span>
-    </>
-  );
-
-  if (interactive) {
-    return (
-      <button
-        key={key}
-        type="button"
-        onClick={onClick}
-        className={cls}
-        aria-label={label}
-      >
-        {content}
-      </button>
-    );
-  }
   return (
-    <div key={key} className={cls} aria-label={label}>
-      {content}
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button type="button" className={cls} aria-label={label}>
+          <span className="text-base font-semibold">{cell.day}</span>
+          <span className="text-[10px] font-medium opacity-90">{countText}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-72 p-0">
+        <GroupCellPopoverBody
+          iso={cell.iso}
+          availableNames={availableNames}
+          memberStatuses={memberStatuses}
+          isFinalized={isFinalized}
+          meetingLocation={meetingLocation}
+          isModerator={isModerator}
+          onAction={onAction}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function GroupCellPopoverBody({
+  iso,
+  availableNames,
+  memberStatuses,
+  isFinalized,
+  meetingLocation,
+  isModerator,
+  onAction,
+}: {
+  iso: string;
+  availableNames: string[];
+  memberStatuses: MemberStatus[];
+  isFinalized: boolean;
+  meetingLocation: string | null;
+  isModerator: boolean;
+  onAction: () => void;
+}) {
+  const availableSet = new Set(availableNames);
+  const nowMs = Date.now();
+
+  const available: string[] = [];
+  const notAvailable: string[] = [];
+  const notReviewed: string[] = [];
+
+  for (const m of memberStatuses) {
+    if (availableSet.has(m.name)) {
+      available.push(m.name);
+      continue;
+    }
+    const reviewedRecently =
+      m.last_reviewed_at !== null &&
+      nowMs - new Date(m.last_reviewed_at).getTime() <= THIRTY_DAYS_MS;
+    if (reviewedRecently) notAvailable.push(m.name);
+    else notReviewed.push(m.name);
+  }
+
+  const sectionsRendered: number =
+    (available.length > 0 ? 1 : 0) +
+    (notAvailable.length > 0 ? 1 : 0) +
+    (notReviewed.length > 0 ? 1 : 0);
+
+  return (
+    <div className="flex flex-col">
+      <div className="border-b px-4 py-3">
+        <p className="text-sm font-semibold leading-tight">
+          {formatLongDate(iso)}
+        </p>
+      </div>
+
+      {isFinalized && (
+        <div className="flex items-start gap-2 border-b bg-primary/5 px-4 py-3 text-xs">
+          <CheckCircle2
+            className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div className="leading-snug">
+            <p className="font-medium text-foreground">
+              Meeting confirmed for this date, 4:00–8:00pm
+            </p>
+            {meetingLocation && (
+              <p className="mt-0.5 text-muted-foreground">{meetingLocation}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="px-4 py-3">
+        {available.length > 0 && (
+          <PopoverSection
+            label="Available"
+            count={available.length}
+            members={available}
+            renderItem={(name) => (
+              <li key={name} className="flex items-center gap-2 py-0.5 text-sm">
+                <CheckCircle2
+                  className="h-4 w-4 shrink-0 text-emerald-600"
+                  aria-hidden="true"
+                />
+                <span className="text-foreground">{name}</span>
+              </li>
+            )}
+          />
+        )}
+
+        {available.length > 0 && notAvailable.length > 0 && (
+          <Separator className="my-3" />
+        )}
+
+        {notAvailable.length > 0 && (
+          <PopoverSection
+            label="Not available"
+            count={notAvailable.length}
+            members={notAvailable}
+            renderItem={(name) => (
+              <li
+                key={name}
+                className="py-0.5 pl-6 text-sm text-muted-foreground"
+              >
+                {name}
+              </li>
+            )}
+          />
+        )}
+
+        {(available.length > 0 || notAvailable.length > 0) &&
+          notReviewed.length > 0 && <Separator className="my-3" />}
+
+        {notReviewed.length > 0 && (
+          <PopoverSection
+            label="Not yet reviewed"
+            count={notReviewed.length}
+            members={notReviewed}
+            renderItem={(name) => (
+              <li
+                key={name}
+                className="flex items-center gap-2 py-0.5 text-sm text-amber-700 dark:text-amber-500"
+              >
+                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{name}</span>
+              </li>
+            )}
+          />
+        )}
+
+        {sectionsRendered === 0 && (
+          <p className="text-sm text-muted-foreground">No members yet.</p>
+        )}
+      </div>
+
+      {isModerator && (
+        <div className="border-t px-4 py-3">
+          <Button
+            type="button"
+            onClick={onAction}
+            variant={isFinalized ? "destructive" : "default"}
+            className="w-full"
+          >
+            {isFinalized ? "Cancel this meeting" : "Finalize this meeting"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PopoverSection({
+  label,
+  count,
+  members,
+  renderItem,
+}: {
+  label: string;
+  count: number;
+  members: string[];
+  renderItem: (name: string) => React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label} ({count})
+      </p>
+      <ul className="mt-1.5">{members.map(renderItem)}</ul>
     </div>
   );
 }

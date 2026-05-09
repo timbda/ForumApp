@@ -52,10 +52,13 @@ export default async function CalendarPage() {
       .lte("date", endISO),
     supabase
       .from("meetings")
-      .select("date")
+      .select("date, location")
       .gte("date", startISO)
       .lte("date", endISO),
-    supabase.from("users").select("name, last_reviewed_at").order("name"),
+    supabase
+      .from("users")
+      .select("id, name, last_reviewed_at")
+      .order("name"),
     supabase
       .from("users")
       .select("is_moderator")
@@ -64,6 +67,7 @@ export default async function CalendarPage() {
   ]);
 
   const allAvail = allAvailRes.data ?? [];
+  const allUsers = allUsersRes.data ?? [];
 
   const availableDates = allAvail
     .filter((r) => r.user_id === user.id)
@@ -75,8 +79,32 @@ export default async function CalendarPage() {
     availabilityCounts[d] = (availabilityCounts[d] ?? 0) + 1;
   }
 
-  const finalizedDates = (meetingsRes.data ?? []).map((m) => m.date as string);
-  const allUsers = allUsersRes.data ?? [];
+  // Per-date list of available member names (sorted) — feeds the group-cell
+  // popover. Builds against the user list so unknown user_ids are skipped.
+  const nameById = new Map<string, string>(
+    allUsers.map((u) => [
+      u.id as string,
+      (u.name as string | null) ?? "(unnamed)",
+    ])
+  );
+  const availabilityByDate: Record<string, string[]> = {};
+  for (const row of allAvail) {
+    const name = nameById.get(row.user_id as string);
+    if (!name) continue;
+    const d = row.date as string;
+    (availabilityByDate[d] ??= []).push(name);
+  }
+  for (const d of Object.keys(availabilityByDate)) {
+    availabilityByDate[d].sort((a, b) => a.localeCompare(b));
+  }
+
+  const meetings = meetingsRes.data ?? [];
+  const finalizedDates = meetings.map((m) => m.date as string);
+  const meetingLocations: Record<string, string | null> = {};
+  for (const m of meetings) {
+    meetingLocations[m.date as string] = (m.location as string | null) ?? null;
+  }
+
   const totalMembers = allUsers.length;
   const isModerator = profileRes.data?.is_moderator === true;
 
@@ -98,7 +126,9 @@ export default async function CalendarPage() {
       <Calendar
         availableDates={availableDates}
         availabilityCounts={availabilityCounts}
+        availabilityByDate={availabilityByDate}
         finalizedDates={finalizedDates}
+        meetingLocations={meetingLocations}
         totalMembers={totalMembers}
         isModerator={isModerator}
         reviewedRecentlyCount={reviewedRecentlyCount}
