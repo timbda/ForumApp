@@ -60,7 +60,7 @@ export function Calendar({ unavailableDates }: CalendarProps) {
           </a>
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Tap a date to toggle unavailable. Default is available.
+          Changes save automatically.
         </p>
       </header>
 
