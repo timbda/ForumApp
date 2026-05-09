@@ -44,12 +44,20 @@ export default async function Home() {
             <span className="ml-2 text-sm text-gray-400">(Moderator)</span>
           )}
         </p>
-        <a
-          href="/calendar"
-          className="mt-6 inline-block rounded-lg bg-gray-900 px-6 py-3 font-medium text-white hover:bg-gray-800"
-        >
-          My Availability
-        </a>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <a
+            href="/calendar"
+            className="inline-block rounded-lg bg-gray-900 px-6 py-3 font-medium text-white hover:bg-gray-800"
+          >
+            My Availability
+          </a>
+          <a
+            href="/members"
+            className="inline-block rounded-lg border border-gray-300 px-6 py-3 font-medium text-gray-900 hover:bg-gray-50"
+          >
+            Members
+          </a>
+        </div>
         <div>
           <SignOutButton />
         </div>
