@@ -11,6 +11,7 @@ type CalendarProps = {
   finalizedDates: string[];
   totalMembers: number;
   isModerator: boolean;
+  reviewedRecentlyCount: number;
 };
 
 type Cell = { day: number; iso: string } | null;
@@ -27,6 +28,7 @@ export function Calendar({
   finalizedDates,
   totalMembers,
   isModerator,
+  reviewedRecentlyCount,
 }: CalendarProps) {
   const [view, setView] = useState<View>("mine");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -141,6 +143,12 @@ export function Calendar({
       </header>
 
       <div className="mx-auto max-w-md px-3">
+        {view === "group" && (
+          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            {reviewedRecentlyCount} of {totalMembers} members have reviewed
+            their availability in the last 30 days.
+          </p>
+        )}
         {months.map((m) => (
           <section key={`${m.year}-${m.month}`} className="mt-6">
             <h2 className="px-1 text-base font-semibold text-gray-900">

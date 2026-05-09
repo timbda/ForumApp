@@ -28,7 +28,7 @@ export default async function CalendarPage() {
   const [
     allAvailRes,
     meetingsRes,
-    membersCountRes,
+    allUsersRes,
     profileRes,
   ] = await Promise.all([
     supabase
@@ -41,7 +41,7 @@ export default async function CalendarPage() {
       .select("date")
       .gte("date", startISO)
       .lte("date", endISO),
-    supabase.from("users").select("*", { count: "exact", head: true }),
+    supabase.from("users").select("last_reviewed_at"),
     supabase
       .from("users")
       .select("is_moderator")
@@ -62,8 +62,17 @@ export default async function CalendarPage() {
   }
 
   const finalizedDates = (meetingsRes.data ?? []).map((m) => m.date as string);
-  const totalMembers = membersCountRes.count ?? 0;
+  const allUsers = allUsersRes.data ?? [];
+  const totalMembers = allUsers.length;
   const isModerator = profileRes.data?.is_moderator === true;
+
+  // Members "reviewed recently" = last_reviewed_at within the past 30 days.
+  const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const reviewedRecentlyCount = allUsers.filter(
+    (u) =>
+      u.last_reviewed_at !== null &&
+      new Date(u.last_reviewed_at as string).getTime() >= thirtyDaysAgoMs
+  ).length;
 
   return (
     <Calendar
@@ -72,6 +81,7 @@ export default async function CalendarPage() {
       finalizedDates={finalizedDates}
       totalMembers={totalMembers}
       isModerator={isModerator}
+      reviewedRecentlyCount={reviewedRecentlyCount}
     />
   );
 }
