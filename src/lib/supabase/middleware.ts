@@ -38,7 +38,16 @@ export async function updateSession(request: NextRequest) {
 
   // Refresh the user's session token on every request.
   // Always use getUser() (not getSession()) — it validates with the auth server.
-  await supabase.auth.getUser();
+  // We DON'T retry here: middleware runs on every request, and adding latency
+  // for the rare transient TLS error is worse than skipping a refresh and
+  // letting the next request try again. Failure is logged, not propagated:
+  // a missed refresh just means the page-level getUserWithRetry will do it.
+  const { error } = await supabase.auth.getUser();
+  if (error) {
+    console.warn(
+      `[auth/middleware] getUser failed for ${request.nextUrl.pathname}: ${error.name}: ${error.message}`
+    );
+  }
 
   return response;
 }

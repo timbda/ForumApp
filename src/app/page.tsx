@@ -1,10 +1,9 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUserWithRetry } from "@/lib/supabase/server";
 import { SignOutButton } from "./sign-out-button";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithRetry(supabase, "home");
 
   if (!user) {
     return (

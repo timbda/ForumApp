@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUserWithRetry } from "@/lib/supabase/server";
 import { updateLastReviewed } from "@/lib/server-actions/update-last-reviewed";
 import { Calendar } from "./calendar";
 import { formatLocalISO } from "./dates";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithRetry(supabase, "calendar");
   if (!user) redirect("/login");
 
   // Fire-and-forget: don't block the calendar render on the timestamp update.

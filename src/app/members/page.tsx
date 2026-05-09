@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUserWithRetry } from "@/lib/supabase/server";
 import { MembersList } from "./members-list";
 
 export default async function MembersPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUserWithRetry(supabase, "members");
   if (!user) redirect("/login");
 
   const [membersRes, profileRes] = await Promise.all([
