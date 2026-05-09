@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+
+export type ResetResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string };
 
 async function getCallerOrThrow() {
   const supabase = await createClient();
@@ -42,15 +47,66 @@ export async function updateMemberName(
   revalidatePath("/members");
 }
 
-export async function resetCalendarData(): Promise<void> {
-  // The SECURITY DEFINER function in migration 005 enforces the moderator
-  // check itself, but verifying here too gives us a clean error surface
-  // and matches the other moderator-only actions in this file.
-  const { supabase } = await getModeratorOrThrow();
-  const { error } = await supabase.rpc("reset_calendar_data");
-  if (error) throw error;
-  revalidatePath("/calendar");
-  revalidatePath("/members");
+export async function resetCalendarData(): Promise<ResetResult> {
+  // Two clients deliberately:
+  //   1. The auth-aware SSR client to verify the caller is a moderator.
+  //   2. The service-role admin client to perform the destructive operations.
+  //      Service role bypasses RLS, so the unfiltered DELETEs and the
+  //      everyone-rows UPDATE go through.
+  //
+  // We catch all errors and return a tagged result so the UI never sees a raw
+  // Postgres error object. On failure, callers get a single human-readable
+  // message string.
+  try {
+    await getModeratorOrThrow();
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error ? err.message : "Authorization check failed",
+    };
+  }
+
+  try {
+    const admin = createAdminClient();
+
+    // Supabase JS / PostgREST refuses unfiltered DELETE/UPDATE for safety, so
+    // each statement carries a tautology: "where (NOT NULL) IS TRUE", which
+    // matches every row given the schema's NOT NULL constraints.
+
+    const { error: availErr } = await admin
+      .from("availability")
+      .delete()
+      .not("user_id", "is", null);
+    if (availErr) {
+      return { ok: false, message: `Reset failed at availability: ${availErr.message}` };
+    }
+
+    const { error: meetingsErr } = await admin
+      .from("meetings")
+      .delete()
+      .not("id", "is", null);
+    if (meetingsErr) {
+      return { ok: false, message: `Reset failed at meetings: ${meetingsErr.message}` };
+    }
+
+    const { error: usersErr } = await admin
+      .from("users")
+      .update({ last_reviewed_at: null })
+      .not("id", "is", null);
+    if (usersErr) {
+      return { ok: false, message: `Reset failed at users: ${usersErr.message}` };
+    }
+
+    revalidatePath("/calendar");
+    revalidatePath("/members");
+    return { ok: true, message: "All calendar data has been reset." };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
 }
 
 export async function toggleMemberModerator(userId: string): Promise<void> {

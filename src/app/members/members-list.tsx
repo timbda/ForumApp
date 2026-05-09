@@ -129,7 +129,7 @@ function DangerZone() {
   const [resetInput, setResetInput] = useState("");
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function openModal() {
     setResetInput("");
@@ -149,13 +149,19 @@ function DangerZone() {
     setResetting(true);
     setError(null);
     try {
-      await resetCalendarData();
-      setShowModal(false);
-      setResetInput("");
-      setShowSuccess(true);
-      window.setTimeout(() => setShowSuccess(false), 4000);
+      const result = await resetCalendarData();
+      if (result.ok) {
+        setShowModal(false);
+        setResetInput("");
+        setSuccessMessage(result.message);
+        window.setTimeout(() => setSuccessMessage(null), 4000);
+      } else {
+        setError(`Reset failed: ${result.message}`);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reset failed");
+      // Network or runtime error before the action returned cleanly.
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(`Reset failed: ${msg}`);
     } finally {
       setResetting(false);
     }
@@ -178,9 +184,9 @@ function DangerZone() {
         Reset calendar data
       </button>
 
-      {showSuccess && (
+      {successMessage && (
         <p className="mt-3 rounded-lg bg-green-100 px-3 py-2 text-sm text-green-800">
-          Calendar data reset.
+          {successMessage}
         </p>
       )}
 
