@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
 import { createClient, getUserWithRetry } from "@/lib/supabase/server";
 import { updateLastReviewed } from "@/lib/server-actions/update-last-reviewed";
 import { Calendar } from "./calendar";
@@ -80,14 +81,16 @@ export default async function CalendarPage() {
   }));
 
   return (
-    <Calendar
-      availableDates={availableDates}
-      availabilityCounts={availabilityCounts}
-      finalizedDates={finalizedDates}
-      totalMembers={totalMembers}
-      isModerator={isModerator}
-      reviewedRecentlyCount={reviewedRecentlyCount}
-      memberStatuses={memberStatuses}
-    />
+    <AppShell>
+      <Calendar
+        availableDates={availableDates}
+        availabilityCounts={availabilityCounts}
+        finalizedDates={finalizedDates}
+        totalMembers={totalMembers}
+        isModerator={isModerator}
+        reviewedRecentlyCount={reviewedRecentlyCount}
+        memberStatuses={memberStatuses}
+      />
+    </AppShell>
   );
 }

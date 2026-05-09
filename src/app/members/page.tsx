@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
 import { createClient, getUserWithRetry } from "@/lib/supabase/server";
 import { MembersList } from "./members-list";
 
@@ -23,10 +24,12 @@ export default async function MembersPage() {
   const isModerator = profileRes.data?.is_moderator === true;
 
   return (
-    <MembersList
-      members={members}
-      currentUserId={user.id}
-      currentUserIsModerator={isModerator}
-    />
+    <AppShell>
+      <MembersList
+        members={members}
+        currentUserId={user.id}
+        currentUserIsModerator={isModerator}
+      />
+    </AppShell>
   );
 }

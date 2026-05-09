@@ -84,25 +84,15 @@ export function MembersList({
   }
 
   return (
-    <main className="min-h-screen bg-white pb-12">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-gray-900">Members</h1>
-          <nav className="flex items-center gap-3 text-sm text-gray-600">
-            <a href="/calendar" className="hover:text-gray-900">
-              My Availability
-            </a>
-            <span aria-hidden="true" className="text-gray-300">
-              ·
-            </span>
-            <a href="/" className="hover:text-gray-900">
-              Home
-            </a>
-          </nav>
-        </div>
+    <div>
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Members</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          {optimisticMembers.length} {optimisticMembers.length === 1 ? "member" : "members"} in the forum.
+        </p>
       </header>
 
-      <div className="mx-auto max-w-md px-3">
+      <div className="mx-auto max-w-md">
         <ul className="mt-4 divide-y divide-gray-200 rounded-lg border border-gray-200">
           {optimisticMembers.map((m) => (
             <MemberRow
@@ -120,7 +110,7 @@ export function MembersList({
 
         {currentUserIsModerator && <DangerZone />}
       </div>
-    </main>
+    </div>
   );
 }
 

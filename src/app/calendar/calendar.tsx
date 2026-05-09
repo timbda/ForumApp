@@ -107,22 +107,9 @@ export function Calendar({
   }
 
   return (
-    <main className="min-h-screen bg-white pb-12">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-gray-900">My Availability</h1>
-          <nav className="flex items-center gap-3 text-sm text-gray-600">
-            <a href="/members" className="hover:text-gray-900">
-              Members
-            </a>
-            <span aria-hidden="true" className="text-gray-300">
-              ·
-            </span>
-            <a href="/" className="hover:text-gray-900">
-              Home
-            </a>
-          </nav>
-        </div>
+    <div>
+      <header className="-mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pb-3 border-b border-gray-200 bg-white">
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">My Availability</h1>
         <p className="mt-1 text-xs text-gray-500">
           Changes save automatically.
         </p>
@@ -267,7 +254,7 @@ export function Calendar({
           onConfirm={handleConfirmYes}
         />
       )}
-    </main>
+    </div>
   );
 }
 
