@@ -8,6 +8,9 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  // See src/lib/supabase/client.ts for the rationale behind the flowType mutation.
+  // Aligning the middleware client with the others avoids subtle inconsistencies if
+  // any code path here ever calls signInWithOtp.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -30,6 +33,8 @@ export async function updateSession(request: NextRequest) {
       },
     }
   );
+
+  (supabase.auth as unknown as { flowType: string }).flowType = "implicit";
 
   // Refresh the user's session token on every request.
   // Always use getUser() (not getSession()) — it validates with the auth server.
