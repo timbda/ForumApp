@@ -44,7 +44,15 @@ export default async function Home() {
             <span className="ml-2 text-sm text-gray-400">(Moderator)</span>
           )}
         </p>
-        <SignOutButton />
+        <a
+          href="/calendar"
+          className="mt-6 inline-block rounded-lg bg-gray-900 px-6 py-3 font-medium text-white hover:bg-gray-800"
+        >
+          My Availability
+        </a>
+        <div>
+          <SignOutButton />
+        </div>
       </div>
     </main>
   );
