@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { CheckCircle2, ChevronDown, Clock } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle2, ChevronDown, Clock } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -14,6 +14,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -48,12 +54,18 @@ import { formatLocalISO } from "./dates";
 
 type MemberStatus = { name: string; last_reviewed_at: string | null };
 
+export type MeetingDetails = {
+  date: string;
+  startTime: string; // "HH:MM:SS"
+  endTime: string;   // "HH:MM:SS"
+  location: string | null;
+};
+
 type CalendarProps = {
   availableDates: string[];
   availabilityCounts: Record<string, number>;
   availabilityByDate: Record<string, string[]>;
-  finalizedDates: string[];
-  meetingLocations: Record<string, string | null>;
+  meetings: MeetingDetails[]; // sorted ascending by date
   totalMembers: number;
   isModerator: boolean;
   reviewedRecentlyCount: number;
@@ -76,13 +88,14 @@ export function Calendar({
   availableDates,
   availabilityCounts,
   availabilityByDate,
-  finalizedDates,
-  meetingLocations,
+  meetings,
   totalMembers,
   isModerator,
   reviewedRecentlyCount,
   memberStatuses,
 }: CalendarProps) {
+  const meetingsByDate = new Map(meetings.map((m) => [m.date, m]));
+  const finalizedDates = meetings.map((m) => m.date);
   const [view, setView] = useState<View>("mine");
   const [finalizeForDate, setFinalizeForDate] = useState<string | null>(null);
   const [cancelForDate, setCancelForDate] = useState<string | null>(null);
@@ -181,6 +194,16 @@ export function Calendar({
           Changes save automatically. All dates start as unavailable — tap a
           date to mark yourself available.
         </p>
+      </header>
+
+      <div className="mx-auto mt-4 max-w-md">
+        <UpcomingMeetingsCard
+          meetings={meetings}
+          todayISO={todayISO}
+          isModerator={isModerator}
+          onCancel={(iso) => setCancelForDate(iso)}
+        />
+
         <Tabs
           value={view}
           onValueChange={(v) => setView(v as View)}
@@ -191,14 +214,12 @@ export function Calendar({
             <TabsTrigger value="group">Group availability</TabsTrigger>
           </TabsList>
         </Tabs>
-      </header>
 
-      <div className="mx-auto mt-4 max-w-md">
         {view === "group" && (
           <Collapsible
             open={bannerOpen}
             onOpenChange={setBannerOpen}
-            className="mb-4"
+            className="mt-4"
           >
             <CollapsibleTrigger asChild>
               <button
@@ -304,7 +325,7 @@ export function Calendar({
                       setOpenPopoverDate(o ? iso : null)
                     }
                     availableNames={availabilityByDate[iso] ?? []}
-                    meetingLocation={meetingLocations[iso] ?? null}
+                    meeting={meetingsByDate.get(iso) ?? null}
                     memberStatuses={memberStatuses}
                     onAction={() => openConfirmFromPopover(iso)}
                   />
@@ -345,10 +366,14 @@ function renderMineCell(args: {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex aspect-square min-h-[44px] items-center justify-center rounded-lg border text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        isAvail
-          ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-          : "border-border bg-muted/40 text-foreground hover:bg-muted",
+        "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border text-base font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        // Finalized takes precedence over the avail/unavail styling so the
+        // confirmed-meeting state is unmistakable in either view.
+        isFinalized
+          ? "border-blue-700 bg-blue-700 text-white hover:bg-blue-700/90"
+          : isAvail
+            ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+            : "border-border bg-muted/40 text-foreground hover:bg-muted",
         isPast && "opacity-60",
         isToday && !isFinalized && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
         isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background"
@@ -358,7 +383,10 @@ function renderMineCell(args: {
         isFinalized ? " (finalized meeting)" : ""
       }`}
     >
-      {cell.day}
+      <span>{cell.day}</span>
+      {isFinalized && (
+        <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
+      )}
     </button>
   );
 }
@@ -373,7 +401,7 @@ function GroupCell(args: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   availableNames: string[];
-  meetingLocation: string | null;
+  meeting: MeetingDetails | null;
   memberStatuses: MemberStatus[];
   onAction: () => void;
 }) {
@@ -387,7 +415,7 @@ function GroupCell(args: {
     open,
     onOpenChange,
     availableNames,
-    meetingLocation,
+    meeting,
     memberStatuses,
     onAction,
   } = args;
@@ -400,7 +428,9 @@ function GroupCell(args: {
 
   const cls = cn(
     "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
-    heat,
+    // Finalized fill overrides the heatmap so the cell reads as "confirmed
+    // meeting" regardless of how many members were available.
+    isFinalized ? "bg-blue-700 text-white" : heat,
     isToday && !isFinalized && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
     isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background"
   );
@@ -410,7 +440,11 @@ function GroupCell(args: {
       <PopoverTrigger asChild>
         <button type="button" className={cls} aria-label={label}>
           <span className="text-base font-semibold">{cell.day}</span>
-          <span className="text-[10px] font-medium opacity-90">{countText}</span>
+          {isFinalized ? (
+            <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
+          ) : (
+            <span className="text-[10px] font-medium opacity-90">{countText}</span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
@@ -419,7 +453,7 @@ function GroupCell(args: {
           availableNames={availableNames}
           memberStatuses={memberStatuses}
           isFinalized={isFinalized}
-          meetingLocation={meetingLocation}
+          meeting={meeting}
           isModerator={isModerator}
           onAction={onAction}
         />
@@ -433,7 +467,7 @@ function GroupCellPopoverBody({
   availableNames,
   memberStatuses,
   isFinalized,
-  meetingLocation,
+  meeting,
   isModerator,
   onAction,
 }: {
@@ -441,7 +475,7 @@ function GroupCellPopoverBody({
   availableNames: string[];
   memberStatuses: MemberStatus[];
   isFinalized: boolean;
-  meetingLocation: string | null;
+  meeting: MeetingDetails | null;
   isModerator: boolean;
   onAction: () => void;
 }) {
@@ -485,10 +519,13 @@ function GroupCellPopoverBody({
           />
           <div className="leading-snug">
             <p className="font-medium text-foreground">
-              Meeting confirmed for this date, 4:00–8:00pm
+              Meeting confirmed for this date,{" "}
+              {meeting
+                ? formatTimeRange(meeting.startTime, meeting.endTime)
+                : "4:00–8:00 PM"}
             </p>
-            {meetingLocation && (
-              <p className="mt-0.5 text-muted-foreground">{meetingLocation}</p>
+            {meeting?.location && (
+              <p className="mt-0.5 text-muted-foreground">{meeting.location}</p>
             )}
           </div>
         </div>
@@ -775,6 +812,106 @@ function CancelMeetingDialog({
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
+}
+
+function UpcomingMeetingsCard({
+  meetings,
+  todayISO,
+  isModerator,
+  onCancel,
+}: {
+  meetings: MeetingDetails[];
+  todayISO: string;
+  isModerator: boolean;
+  onCancel: (iso: string) => void;
+}) {
+  const upcoming = meetings.filter((m) => m.date >= todayISO);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Upcoming meetings</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No meetings scheduled yet.
+          </p>
+        ) : (
+          <ul className="-mx-2 divide-y divide-border">
+            {upcoming.map((m) => (
+              <li
+                key={m.date}
+                className="flex items-start justify-between gap-3 px-2 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium leading-snug text-foreground">
+                    {formatShortDate(m.date)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatTimeRange(m.startTime, m.endTime)}
+                  </p>
+                  {m.location && (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {m.location}
+                    </p>
+                  )}
+                </div>
+                {isModerator && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onCancel(m.date)}
+                    className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Converts a "HH:MM:SS" or "HH:MM" Postgres time literal to a friendly
+// "4:00 PM" rendering. Anything we can't parse falls through as-is rather than
+// erroring, so a malformed value at least prints something readable.
+function formatTime(t: string): string {
+  const [hStr, mStr] = t.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return t;
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  const minutes = m.toString().padStart(2, "0");
+  return `${hour12}:${minutes} ${period}`;
+}
+
+// "4:00 PM" → "4:00 PM" + en-dash + "8:00 PM", collapsing the AM/PM marker
+// when both ends share it ("4:00–8:00 PM").
+function formatTimeRange(startTime: string, endTime: string): string {
+  const start = formatTime(startTime);
+  const end = formatTime(endTime);
+  const sParts = start.split(" ");
+  const eParts = end.split(" ");
+  if (sParts.length === 2 && eParts.length === 2 && sParts[1] === eParts[1]) {
+    return `${sParts[0]}–${eParts[0]} ${eParts[1]}`;
+  }
+  return `${start}–${end}`;
+}
+
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function lastReviewedLabel(iso: string | null): string {

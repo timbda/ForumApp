@@ -52,7 +52,7 @@ export default async function CalendarPage() {
       .lte("date", endISO),
     supabase
       .from("meetings")
-      .select("date, location")
+      .select("date, start_time, end_time, location")
       .gte("date", startISO)
       .lte("date", endISO),
     supabase
@@ -98,12 +98,16 @@ export default async function CalendarPage() {
     availabilityByDate[d].sort((a, b) => a.localeCompare(b));
   }
 
-  const meetings = meetingsRes.data ?? [];
-  const finalizedDates = meetings.map((m) => m.date as string);
-  const meetingLocations: Record<string, string | null> = {};
-  for (const m of meetings) {
-    meetingLocations[m.date as string] = (m.location as string | null) ?? null;
-  }
+  // Sort ascending so the Upcoming Meetings card renders chronologically
+  // without re-sorting on the client.
+  const meetings = (meetingsRes.data ?? [])
+    .map((m) => ({
+      date: m.date as string,
+      startTime: (m.start_time as string | null) ?? "16:00:00",
+      endTime: (m.end_time as string | null) ?? "20:00:00",
+      location: (m.location as string | null) ?? null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const totalMembers = allUsers.length;
   const isModerator = profileRes.data?.is_moderator === true;
@@ -127,8 +131,7 @@ export default async function CalendarPage() {
         availableDates={availableDates}
         availabilityCounts={availabilityCounts}
         availabilityByDate={availabilityByDate}
-        finalizedDates={finalizedDates}
-        meetingLocations={meetingLocations}
+        meetings={meetings}
         totalMembers={totalMembers}
         isModerator={isModerator}
         reviewedRecentlyCount={reviewedRecentlyCount}
