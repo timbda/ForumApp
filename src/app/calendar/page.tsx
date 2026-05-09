@@ -1,13 +1,26 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { createClient, getUserWithRetry } from "@/lib/supabase/server";
+import { ErrorFallback } from "@/components/error-fallback";
+import {
+  createClient,
+  getUserWithRetry,
+  PausedProjectError,
+  TransientFetchError,
+} from "@/lib/supabase/server";
 import { updateLastReviewed } from "@/lib/server-actions/update-last-reviewed";
 import { Calendar } from "./calendar";
 import { formatLocalISO } from "./dates";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
-  const user = await getUserWithRetry(supabase, "calendar");
+  let user;
+  try {
+    user = await getUserWithRetry(supabase, "calendar");
+  } catch (err) {
+    if (err instanceof PausedProjectError) return <ErrorFallback variant="paused" />;
+    if (err instanceof TransientFetchError) return <ErrorFallback variant="transient" />;
+    throw err;
+  }
   if (!user) redirect("/login");
 
   // Fire-and-forget: don't block the calendar render on the timestamp update.

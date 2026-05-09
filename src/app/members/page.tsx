@@ -1,11 +1,24 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { createClient, getUserWithRetry } from "@/lib/supabase/server";
+import { ErrorFallback } from "@/components/error-fallback";
+import {
+  createClient,
+  getUserWithRetry,
+  PausedProjectError,
+  TransientFetchError,
+} from "@/lib/supabase/server";
 import { MembersList } from "./members-list";
 
 export default async function MembersPage() {
   const supabase = await createClient();
-  const user = await getUserWithRetry(supabase, "members");
+  let user;
+  try {
+    user = await getUserWithRetry(supabase, "members");
+  } catch (err) {
+    if (err instanceof PausedProjectError) return <ErrorFallback variant="paused" />;
+    if (err instanceof TransientFetchError) return <ErrorFallback variant="transient" />;
+    throw err;
+  }
   if (!user) redirect("/login");
 
   const [membersRes, profileRes] = await Promise.all([

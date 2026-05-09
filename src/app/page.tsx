@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { ErrorFallback } from "@/components/error-fallback";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,11 +9,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { createClient, getUserWithRetry } from "@/lib/supabase/server";
+import {
+  createClient,
+  getUserWithRetry,
+  PausedProjectError,
+  TransientFetchError,
+} from "@/lib/supabase/server";
 
 export default async function Home() {
   const supabase = await createClient();
-  const user = await getUserWithRetry(supabase, "home");
+  let user;
+  try {
+    user = await getUserWithRetry(supabase, "home");
+  } catch (err) {
+    if (err instanceof PausedProjectError) return <ErrorFallback variant="paused" />;
+    if (err instanceof TransientFetchError) return <ErrorFallback variant="transient" />;
+    throw err;
+  }
 
   if (!user) {
     return (
