@@ -1,6 +1,25 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
+import { ChevronDown } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { markAvailable, markUnavailable } from "./actions";
 import { finalizeMeeting, unfinalizeMeeting } from "./meeting-actions";
 import { formatLocalISO } from "./dates";
@@ -36,7 +55,7 @@ export function Calendar({
 }: CalendarProps) {
   const [view, setView] = useState<View>("mine");
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  const [bannerExpanded, setBannerExpanded] = useState(false);
+  const [bannerOpen, setBannerOpen] = useState(false);
 
   const [optimisticAvail, applyAvail] = useOptimistic<
     Set<string>,
@@ -76,6 +95,7 @@ export function Calendar({
         else await markAvailable(dateISO);
       } catch (err) {
         console.error("Toggle failed:", err);
+        toast.error("Couldn't save change. Please try again.");
       }
     });
   }
@@ -98,79 +118,73 @@ export function Calendar({
         op: c.action === "finalize" ? "add" : "remove",
       });
       try {
-        if (c.action === "finalize") await finalizeMeeting(c.date);
-        else await unfinalizeMeeting(c.date);
+        if (c.action === "finalize") {
+          await finalizeMeeting(c.date);
+          toast.success(`Meeting finalized for ${formatLongDate(c.date)}`);
+        } else {
+          await unfinalizeMeeting(c.date);
+          toast.success(`Meeting cancelled for ${formatLongDate(c.date)}`);
+        }
       } catch (err) {
         console.error("Meeting action failed:", err);
+        toast.error("Couldn't update the meeting. Please try again.");
       }
     });
   }
 
   return (
     <div>
-      <header className="-mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pb-3 border-b border-gray-200 bg-white">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">My Availability</h1>
-        <p className="mt-1 text-xs text-gray-500">
-          Changes save automatically.
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">My Availability</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Changes save automatically. All dates start as unavailable — tap a
+          date to mark yourself available.
         </p>
-        <p className="mt-1 text-xs text-gray-500">
-          All dates start as unavailable. Tap a date to mark yourself available.
-        </p>
-        <div className="mt-3 flex rounded-lg border border-gray-300 p-0.5">
-          <button
-            type="button"
-            onClick={() => setView("mine")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              view === "mine"
-                ? "bg-gray-900 text-white"
-                : "text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            My availability
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("group")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              view === "group"
-                ? "bg-gray-900 text-white"
-                : "text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            Group availability
-          </button>
-        </div>
+        <Tabs
+          value={view}
+          onValueChange={(v) => setView(v as View)}
+          className="mt-4"
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="mine">My availability</TabsTrigger>
+            <TabsTrigger value="group">Group availability</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </header>
 
-      <div className="mx-auto max-w-md px-3">
+      <div className="mx-auto mt-4 max-w-md">
         {view === "group" && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setBannerExpanded((v) => !v)}
-              aria-expanded={bannerExpanded}
-              className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-left text-sm font-medium text-blue-900 hover:bg-blue-100 active:bg-blue-100"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">
-                  {reviewedRecentlyCount} of {totalMembers} members reviewed
-                  availability in the last 30 days
-                </span>
-                {!bannerExpanded && (
-                  <span className="mt-0.5 block text-xs font-normal text-blue-700">
-                    Tap to see who has and hasn&apos;t reviewed
-                  </span>
-                )}
-              </span>
-              <span
-                aria-hidden="true"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-base text-blue-700"
+          <Collapsible
+            open={bannerOpen}
+            onOpenChange={setBannerOpen}
+            className="mb-4"
+          >
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-primary/10"
               >
-                {bannerExpanded ? "▲" : "▼"}
-              </span>
-            </button>
-            {bannerExpanded && (
-              <ul className="mt-2 divide-y divide-gray-200 rounded-lg border border-gray-200">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    {reviewedRecentlyCount} of {totalMembers} members reviewed
+                    availability in the last 30 days
+                  </span>
+                  {!bannerOpen && (
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                      Tap to see who has and hasn&apos;t reviewed
+                    </span>
+                  )}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "h-5 w-5 shrink-0 text-muted-foreground transition-transform",
+                    bannerOpen && "rotate-180"
+                  )}
+                />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="mt-2 divide-y divide-border rounded-lg border">
                 {memberStatuses.map((m, idx) => {
                   const status = reviewedStatusIcon(m.last_reviewed_at);
                   return (
@@ -178,12 +192,15 @@ export function Calendar({
                       key={`${m.name}-${idx}`}
                       className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
                     >
-                      <span className="truncate text-gray-900">{m.name}</span>
-                      <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                      <span className="truncate text-foreground">{m.name}</span>
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
                         {status && (
                           <span
                             aria-hidden="true"
-                            className={`inline-block w-3 text-center ${status.cls}`}
+                            className={cn(
+                              "inline-block w-3 text-center",
+                              status.cls
+                            )}
                           >
                             {status.icon}
                           </span>
@@ -194,21 +211,22 @@ export function Calendar({
                   );
                 })}
               </ul>
-            )}
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
+
         {months.map((m) => (
           <section key={`${m.year}-${m.month}`} className="mt-6">
-            <h2 className="px-1 text-base font-semibold text-gray-900">
+            <h2 className="px-1 text-base font-semibold tracking-tight text-foreground">
               {monthLabel(m.year, m.month)}
             </h2>
-            <div className="mt-2 grid grid-cols-4 gap-1 text-center text-xs font-medium text-gray-500">
+            <div className="mt-2 grid grid-cols-4 gap-1.5 text-center text-xs font-medium text-muted-foreground">
               <div>Mon</div>
               <div>Tue</div>
               <div>Wed</div>
               <div>Thu</div>
             </div>
-            <div className="mt-1 grid grid-cols-4 gap-1">
+            <div className="mt-1 grid grid-cols-4 gap-1.5">
               {m.cells.map((cell, i) => {
                 if (cell === null) {
                   return <div key={i} className="aspect-square" />;
@@ -247,13 +265,11 @@ export function Calendar({
         ))}
       </div>
 
-      {confirm && (
-        <ConfirmDialog
-          confirm={confirm}
-          onCancel={() => setConfirm(null)}
-          onConfirm={handleConfirmYes}
-        />
-      )}
+      <ConfirmDialog
+        confirm={confirm}
+        onCancel={() => setConfirm(null)}
+        onConfirm={handleConfirmYes}
+      />
     </div>
   );
 }
@@ -268,19 +284,20 @@ function renderMineCell(args: {
   onClick: () => void;
 }) {
   const { key, cell, isAvail, isFinalized, isToday, isPast, onClick } = args;
-  const base =
-    "flex aspect-square min-h-[44px] items-center justify-center rounded-lg border text-base font-medium transition-colors";
-  const style = isAvail
-    ? "border-green-400 bg-green-100 text-green-800 hover:bg-green-50"
-    : "border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-50";
-  const past = isPast ? " opacity-60" : "";
-  const ring = ringClass(isFinalized, isToday);
   return (
     <button
       key={key}
       type="button"
       onClick={onClick}
-      className={`${base} ${style}${past}${ring}`}
+      className={cn(
+        "flex aspect-square min-h-[44px] items-center justify-center rounded-lg border text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        isAvail
+          ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+          : "border-border bg-muted/40 text-foreground hover:bg-muted",
+        isPast && "opacity-60",
+        isToday && !isFinalized && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+        isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+      )}
       aria-pressed={isAvail}
       aria-label={`${cell.iso}${isAvail ? " (available)" : " (unavailable)"}${
         isFinalized ? " (finalized meeting)" : ""
@@ -311,15 +328,20 @@ function renderGroupCell(args: {
     interactive,
     onClick,
   } = args;
-  const base =
-    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none";
   const heat = heatmapClasses(availCount, totalMembers);
-  const ring = ringClass(isFinalized, isToday);
   const label = `${cell.iso}: ${availCount} of ${totalMembers} available${
     isFinalized ? " (finalized meeting)" : ""
   }`;
   const countText =
     totalMembers > 0 ? `${availCount}/${totalMembers}` : String(availCount);
+
+  const cls = cn(
+    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    heat,
+    isToday && !isFinalized && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+    isFinalized && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+    interactive && "hover:opacity-90"
+  );
 
   const content = (
     <>
@@ -334,7 +356,7 @@ function renderGroupCell(args: {
         key={key}
         type="button"
         onClick={onClick}
-        className={`${base} ${heat}${ring} hover:opacity-90`}
+        className={cls}
         aria-label={label}
       >
         {content}
@@ -342,24 +364,18 @@ function renderGroupCell(args: {
     );
   }
   return (
-    <div key={key} className={`${base} ${heat}${ring}`} aria-label={label}>
+    <div key={key} className={cls} aria-label={label}>
       {content}
     </div>
   );
 }
 
-function ringClass(isFinalized: boolean, isToday: boolean): string {
-  if (isFinalized) return " ring-4 ring-blue-500";
-  if (isToday) return " ring-2 ring-gray-900";
-  return "";
-}
-
 function heatmapClasses(available: number, total: number): string {
-  if (total <= 0) return "bg-gray-100 text-gray-500";
+  if (total <= 0) return "bg-muted text-muted-foreground";
   const pct = available / total;
-  if (pct >= 1) return "bg-green-700 text-white";
-  if (pct >= 0.75) return "bg-green-300 text-gray-900";
-  if (pct >= 0.5) return "bg-yellow-200 text-gray-900";
+  if (pct >= 1) return "bg-emerald-700 text-white";
+  if (pct >= 0.75) return "bg-emerald-300 text-emerald-950";
+  if (pct >= 0.5) return "bg-yellow-200 text-yellow-950";
   if (pct >= 0.25) return "bg-orange-400 text-white";
   return "bg-red-700 text-white";
 }
@@ -369,54 +385,48 @@ function ConfirmDialog({
   onCancel,
   onConfirm,
 }: {
-  confirm: Confirm;
+  confirm: Confirm | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const isFinalize = confirm.action === "finalize";
-  const longDate = formatLongDate(confirm.date);
-  const title = isFinalize
-    ? `Finalize meeting on ${longDate}?`
-    : `Cancel meeting on ${longDate}?`;
-  const yesLabel = isFinalize ? "Finalize" : "Cancel meeting";
-  const noLabel = isFinalize ? "Cancel" : "Keep";
-  const yesStyle = isFinalize
-    ? "bg-blue-600 text-white hover:bg-blue-700"
-    : "bg-red-600 text-white hover:bg-red-700";
+  const isFinalize = confirm?.action === "finalize";
+  const longDate = confirm ? formatLongDate(confirm.date) : "";
+  const open = confirm !== null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
-      onClick={onCancel}
+    <AlertDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
     >
-      <div
-        className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-base font-medium text-gray-900">{title}</p>
-        <p className="mt-1 text-sm text-gray-600">
-          All members will be notified.
-        </p>
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            {noLabel}
-          </button>
-          <button
-            type="button"
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {isFinalize
+              ? `Finalize meeting on ${longDate}?`
+              : `Cancel meeting on ${longDate}?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            All members will be notified.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>
+            {isFinalize ? "Cancel" : "Keep"}
+          </AlertDialogCancel>
+          <AlertDialogAction
             onClick={onConfirm}
-            className={`flex-1 rounded-lg px-4 py-2 font-medium ${yesStyle}`}
+            className={cn(
+              !isFinalize &&
+                "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            )}
           >
-            {yesLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+            {isFinalize ? "Finalize" : "Cancel meeting"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -445,11 +455,11 @@ function lastReviewedLabel(iso: string | null): string {
 function reviewedStatusIcon(
   iso: string | null
 ): { icon: string; cls: string } | null {
-  if (iso === null) return { icon: "⊘", cls: "text-gray-400" };
+  if (iso === null) return { icon: "⊘", cls: "text-muted-foreground" };
   const reviewedAt = new Date(iso).getTime();
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
   if (Date.now() - reviewedAt <= thirtyDaysMs) {
-    return { icon: "✓", cls: "text-green-600" };
+    return { icon: "✓", cls: "text-emerald-600" };
   }
   return null;
 }

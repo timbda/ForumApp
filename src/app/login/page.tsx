@@ -1,6 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -18,7 +30,7 @@ export default function LoginPage() {
 
     const { data: allowed, error: allowlistError } = await supabase.rpc(
       "is_email_allowed",
-      { check_email: email },
+      { check_email: email }
     );
 
     if (allowlistError) {
@@ -30,7 +42,7 @@ export default function LoginPage() {
     if (!allowed) {
       setLoading(false);
       setError(
-        "This email is not authorized to access Magnificent8Forum. Contact your moderator if you believe this is a mistake.",
+        "This email is not authorized to access Magnificent8Forum. Contact your moderator if you believe this is a mistake."
       );
       return;
     }
@@ -52,50 +64,56 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-bold text-gray-900 text-center">
-          Magnificent8Forum
-        </h1>
+    <main className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl tracking-tight">
+            Magnificent8Forum
+          </CardTitle>
+          <CardDescription>
+            Enter your email to get a sign-in link.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {submitted ? (
+            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <AlertTitle>Check your email</AlertTitle>
+              <AlertDescription className="text-emerald-800">
+                We just sent a sign-in link to{" "}
+                <span className="font-medium">{email}</span>. The link works in
+                any browser.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
 
-        {submitted ? (
-          <p className="mt-6 text-center text-gray-600">
-            Check your email for a sign-in link.
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-6">
-            <p className="text-center text-gray-600 mb-6">
-              Enter your email to get a sign-in link
-            </p>
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Sending…" : "Send me a sign-in link"}
+              </Button>
 
-            <label htmlFor="email" className="sr-only">
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 placeholder-gray-400 focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-4 w-full rounded-lg bg-gray-900 px-4 py-3 font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-            >
-              {loading ? "Sending…" : "Send me a sign-in link"}
-            </button>
-
-            {error && (
-              <p className="mt-4 text-center text-sm text-red-600">{error}</p>
-            )}
-          </form>
-        )}
-      </div>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </form>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -1,6 +1,33 @@
 "use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import {
   resetCalendarData,
   toggleMemberModerator,
@@ -55,6 +82,8 @@ export function MembersList({
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState<string | null>(null);
 
+  const editingMember = optimisticMembers.find((m) => m.id === editing) ?? null;
+
   function handleSave(id: string, changes: SaveChanges) {
     setEditing(null);
     if (changes.newName === undefined && changes.newModerator === undefined) {
@@ -77,8 +106,19 @@ export function MembersList({
           promises.push(toggleMemberModerator(id));
         }
         await Promise.all(promises);
+        if (changes.newName !== undefined && changes.newModerator !== undefined) {
+          toast.success("Member updated");
+        } else if (changes.newName !== undefined) {
+          toast.success("Name updated");
+        } else if (changes.newModerator !== undefined) {
+          toast.success(
+            changes.newModerator ? "Moderator role granted" : "Moderator role removed"
+          );
+        }
       } catch (err) {
         console.error("Member save failed:", err);
+        const msg = err instanceof Error ? err.message : "Save failed";
+        toast.error(msg);
       }
     });
   }
@@ -86,70 +126,253 @@ export function MembersList({
   return (
     <div>
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Members</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {optimisticMembers.length} {optimisticMembers.length === 1 ? "member" : "members"} in the forum.
+        <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {optimisticMembers.length}{" "}
+          {optimisticMembers.length === 1 ? "member" : "members"} in the forum.
         </p>
       </header>
 
-      <div className="mx-auto max-w-md">
-        <ul className="mt-4 divide-y divide-gray-200 rounded-lg border border-gray-200">
-          {optimisticMembers.map((m) => (
-            <MemberRow
-              key={m.id}
-              member={m}
-              isSelf={m.id === currentUserId}
-              currentUserIsModerator={currentUserIsModerator}
-              isEditing={editing === m.id}
-              onEdit={() => setEditing(m.id)}
-              onCancel={() => setEditing(null)}
-              onSave={(changes) => handleSave(m.id, changes)}
-            />
-          ))}
-        </ul>
+      <div className="mx-auto mt-6 max-w-2xl">
+        <Card>
+          <ul className="divide-y divide-border">
+            {optimisticMembers.map((m) => (
+              <MemberRow
+                key={m.id}
+                member={m}
+                isSelf={m.id === currentUserId}
+                currentUserIsModerator={currentUserIsModerator}
+                onEdit={() => setEditing(m.id)}
+              />
+            ))}
+          </ul>
+        </Card>
 
         {currentUserIsModerator && <DangerZone />}
       </div>
+
+      <EditDialog
+        member={editingMember}
+        open={editing !== null}
+        isSelf={editingMember?.id === currentUserId}
+        currentUserIsModerator={currentUserIsModerator}
+        onClose={() => setEditing(null)}
+        onSave={(changes) => editingMember && handleSave(editingMember.id, changes)}
+      />
     </div>
   );
 }
 
+function MemberRow({
+  member,
+  isSelf,
+  currentUserIsModerator,
+  onEdit,
+}: {
+  member: Member;
+  isSelf: boolean;
+  currentUserIsModerator: boolean;
+  onEdit: () => void;
+}) {
+  const canEdit = isSelf || currentUserIsModerator;
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 sm:px-5">
+      <Avatar className="h-10 w-10 shrink-0">
+        <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+          {initialsFromName(member.name)}
+        </AvatarFallback>
+      </Avatar>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium text-foreground">
+            {member.name}
+          </p>
+          {member.is_moderator && (
+            <Badge variant="secondary" className="shrink-0">
+              Moderator
+            </Badge>
+          )}
+        </div>
+        <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+        <div className="mt-1.5">
+          <ReviewedBadge iso={member.last_reviewed_at} />
+        </div>
+      </div>
+
+      {canEdit && (
+        <Button variant="outline" size="sm" onClick={onEdit}>
+          Edit
+        </Button>
+      )}
+    </li>
+  );
+}
+
+function ReviewedBadge({ iso }: { iso: string | null }) {
+  const label = lastReviewedLabel(iso);
+  if (iso === null) {
+    return (
+      <Badge variant="outline" className="font-normal text-muted-foreground">
+        {label}
+      </Badge>
+    );
+  }
+  const reviewedAt = new Date(iso).getTime();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  const isRecent = Date.now() - reviewedAt <= thirtyDaysMs;
+  if (isRecent) {
+    return (
+      <Badge className="border-emerald-200 bg-emerald-50 font-normal text-emerald-700 hover:bg-emerald-50">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="font-normal text-muted-foreground">
+      {label}
+    </Badge>
+  );
+}
+
+function EditDialog({
+  member,
+  open,
+  isSelf,
+  currentUserIsModerator,
+  onClose,
+  onSave,
+}: {
+  member: Member | null;
+  open: boolean;
+  isSelf: boolean;
+  currentUserIsModerator: boolean;
+  onClose: () => void;
+  onSave: (changes: SaveChanges) => void;
+}) {
+  const [draftName, setDraftName] = useState(member?.name ?? "");
+  const [draftMod, setDraftMod] = useState(member?.is_moderator ?? false);
+
+  useEffect(() => {
+    if (member) {
+      setDraftName(member.name);
+      setDraftMod(member.is_moderator);
+    }
+  }, [member]);
+
+  if (!member) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+
+  const canToggleModerator = currentUserIsModerator && !isSelf;
+
+  function handleSubmit() {
+    const trimmed = draftName.trim();
+    if (!trimmed) return;
+    onSave({
+      newName: trimmed !== member!.name ? trimmed : undefined,
+      newModerator:
+        canToggleModerator && draftMod !== member!.is_moderator
+          ? draftMod
+          : undefined,
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit member</DialogTitle>
+          <DialogDescription>{member.email}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="member-name">Name</Label>
+            <Input
+              id="member-name"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+            />
+          </div>
+
+          {canToggleModerator && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draftMod}
+                onChange={(e) => setDraftMod(e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              <span>Moderator</span>
+            </label>
+          )}
+
+          {currentUserIsModerator && isSelf && (
+            <p className="text-xs text-muted-foreground">
+              You can&apos;t change your own moderator flag — ask another
+              moderator to do it.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!draftName.trim()}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DangerZone() {
-  const [showModal, setShowModal] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
   const [resetInput, setResetInput] = useState("");
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  function openModal() {
+  function openDialog() {
     setResetInput("");
     setError(null);
-    setShowModal(true);
+    setShowDialog(true);
   }
 
-  function closeModal() {
+  function closeDialog() {
     if (resetting) return;
-    setShowModal(false);
+    setShowDialog(false);
     setResetInput("");
     setError(null);
   }
 
-  async function handleConfirm() {
-    if (resetInput !== "RESET" || resetting) return;
+  async function handleConfirm(e: React.MouseEvent) {
+    if (resetInput !== "RESET" || resetting) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
     setResetting(true);
     setError(null);
     try {
       const result = await resetCalendarData();
       if (result.ok) {
-        setShowModal(false);
+        setShowDialog(false);
         setResetInput("");
-        setSuccessMessage(result.message);
-        window.setTimeout(() => setSuccessMessage(null), 4000);
+        toast.success(result.message);
       } else {
         setError(`Reset failed: ${result.message}`);
       }
     } catch (err) {
-      // Network or runtime error before the action returned cleanly.
       const msg = err instanceof Error ? err.message : "Unknown error";
       setError(`Reset failed: ${msg}`);
     } finally {
@@ -160,227 +383,94 @@ function DangerZone() {
   const canConfirm = resetInput === "RESET" && !resetting;
 
   return (
-    <section className="mt-8 rounded-lg border-2 border-red-300 bg-red-50 p-4">
-      <h2 className="text-base font-semibold text-red-900">Danger zone</h2>
-      <p className="mt-1 text-sm text-red-800">
-        Wipes everyone&apos;s availability, finalized meetings, and last-reviewed
-        timestamps. User accounts, names, and moderator status are preserved.
-      </p>
-      <button
-        type="button"
-        onClick={openModal}
-        className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-      >
-        Reset calendar data
-      </button>
-
-      {successMessage && (
-        <p className="mt-3 rounded-lg bg-green-100 px-3 py-2 text-sm text-green-800">
-          {successMessage}
-        </p>
-      )}
-
-      {showModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
-          onClick={closeModal}
-        >
-          <div
-            className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+    <>
+      <Separator className="my-6" />
+      <Card className="border-destructive/30 bg-destructive/5">
+        <div className="p-5">
+          <h2 className="text-base font-semibold text-destructive">
+            Danger zone
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Wipes everyone&apos;s availability, finalized meetings, and
+            last-reviewed timestamps. User accounts, names, and moderator
+            status are preserved.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={openDialog}
+            className="mt-4"
           >
-            <h3 className="text-base font-semibold text-gray-900">
-              Reset all calendar data?
-            </h3>
-
-            <div className="mt-3 space-y-2 text-sm text-gray-700">
-              <p>This will permanently delete:</p>
-              <ul className="ml-4 list-disc text-gray-600">
-                <li>Every member&apos;s availability rows</li>
-                <li>All finalized meetings</li>
-                <li>All last-reviewed timestamps</li>
-              </ul>
-              <p>The following are preserved:</p>
-              <ul className="ml-4 list-disc text-gray-600">
-                <li>User accounts and emails</li>
-                <li>Names and moderator flags</li>
-              </ul>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="block text-xs font-medium text-gray-700">
-                Type <span className="font-mono font-semibold">RESET</span> to
-                confirm
-              </span>
-              <input
-                type="text"
-                value={resetInput}
-                onChange={(e) => setResetInput(e.target.value)}
-                // eslint-disable-next-line jsx-a11y/no-autofocus
-                autoFocus
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base font-mono"
-              />
-            </label>
-
-            {error && (
-              <p className="mt-3 text-sm text-red-700">{error}</p>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={resetting}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={!canConfirm}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {resetting ? "Resetting…" : "Reset"}
-              </button>
-            </div>
-          </div>
+            Reset calendar data
+          </Button>
         </div>
-      )}
-    </section>
+      </Card>
+
+      <AlertDialog
+        open={showDialog}
+        onOpenChange={(o) => { if (!o) closeDialog(); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset all calendar data?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>This will permanently delete:</p>
+                <ul className="ml-4 list-disc">
+                  <li>Every member&apos;s availability rows</li>
+                  <li>All finalized meetings</li>
+                  <li>All last-reviewed timestamps</li>
+                </ul>
+                <p>The following are preserved:</p>
+                <ul className="ml-4 list-disc">
+                  <li>User accounts and emails</li>
+                  <li>Names and moderator flags</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="reset-confirm">
+              Type <span className="font-mono font-semibold">RESET</span> to
+              confirm
+            </Label>
+            <Input
+              id="reset-confirm"
+              value={resetInput}
+              onChange={(e) => setResetInput(e.target.value)}
+              className="font-mono"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              disabled={resetting}
+            />
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!canConfirm}
+              onClick={handleConfirm}
+              className={cn(
+                "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              )}
+            >
+              {resetting ? "Resetting…" : "Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
-function MemberRow({
-  member,
-  isSelf,
-  currentUserIsModerator,
-  isEditing,
-  onEdit,
-  onCancel,
-  onSave,
-}: {
-  member: Member;
-  isSelf: boolean;
-  currentUserIsModerator: boolean;
-  isEditing: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: (changes: SaveChanges) => void;
-}) {
-  const [draftName, setDraftName] = useState(member.name);
-  const [draftMod, setDraftMod] = useState(member.is_moderator);
-
-  useEffect(() => {
-    if (isEditing) {
-      setDraftName(member.name);
-      setDraftMod(member.is_moderator);
-    }
-  }, [isEditing, member.name, member.is_moderator]);
-
-  if (!isEditing) {
-    return (
-      <li className="px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-base font-medium text-gray-900">
-                {member.name}
-              </p>
-              {member.is_moderator && (
-                <span className="text-xs text-gray-400">(Moderator)</span>
-              )}
-            </div>
-            <p className="mt-0.5 truncate text-sm text-gray-600">
-              {member.email}
-            </p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              {lastReviewedLabel(member.last_reviewed_at)}
-            </p>
-          </div>
-          {(isSelf || currentUserIsModerator) && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Edit
-            </button>
-          )}
-        </div>
-      </li>
-    );
-  }
-
-  const canToggleModerator = currentUserIsModerator && !isSelf;
-
-  function handleSave() {
-    const trimmed = draftName.trim();
-    if (!trimmed) return;
-    onSave({
-      newName: trimmed !== member.name ? trimmed : undefined,
-      newModerator:
-        canToggleModerator && draftMod !== member.is_moderator
-          ? draftMod
-          : undefined,
-    });
-  }
-
-  return (
-    <li className="bg-gray-50 px-4 py-3">
-      <div className="space-y-3">
-        <label className="block">
-          <span className="block text-xs font-medium text-gray-700">Name</span>
-          <input
-            type="text"
-            value={draftName}
-            onChange={(e) => setDraftName(e.target.value)}
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base"
-          />
-        </label>
-
-        {canToggleModerator && (
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={draftMod}
-              onChange={(e) => setDraftMod(e.target.checked)}
-              className="h-5 w-5"
-            />
-            Moderator
-          </label>
-        )}
-        {currentUserIsModerator && isSelf && (
-          <p className="text-xs text-gray-500">
-            You can&apos;t change your own moderator flag — ask another moderator
-            to do it.
-          </p>
-        )}
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!draftName.trim()}
-            className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </li>
-  );
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0 || parts[0] === "") return "?";
+  if (parts.length === 1) return parts[0]!.charAt(0).toUpperCase();
+  return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase();
 }
 
 function lastReviewedLabel(iso: string | null): string {
