@@ -47,8 +47,9 @@ If the `public.users` insert fails after the auth row is created, we log it and 
 
 ### Forum Meetings
 - Held roughly every 6 weeks year-round (~8–9 per year).
-- Always 4:00pm – 8:00pm, Bermuda time.
+- Default time is 4:00pm – 8:00pm Bermuda; the moderator can override start/end on a per-meeting basis at finalization.
 - Always in person in Bermuda. Optional `location` field per meeting (free text, can be blank).
+- Optional `notes` field — included in the confirmation email body.
 - Only ever scheduled on Monday, Tuesday, Wednesday, or Thursday — never Fri/Sat/Sun.
 
 ### Availability
@@ -60,9 +61,10 @@ If the `public.users` insert fails after the auth row is created, we log it and 
 
 ### Finalized Meetings
 - The moderator picks dates from the group heatmap and marks them "finalized."
-- A finalized date is locked and clearly highlighted for everyone.
-- The moderator can un-finalize a date (e.g., to reschedule); it returns to being a normal date.
-- Finalizing or un-finalizing a date sends an email to all 8 members.
+- Finalizing opens a dialog where the moderator confirms (or overrides) start time, end time, location, and notes before submitting. Defaults are 4:00pm and 8:00pm Bermuda time.
+- A finalized date is locked and clearly highlighted for everyone — finalized cells render with a deep blue fill, white day number, and a small calendar icon, in both views.
+- The moderator can un-finalize a date (e.g., to reschedule); it returns to being a normal date. The cancel dialog accepts an optional reason that is included in the cancellation email.
+- Finalizing sends a `METHOD:REQUEST` calendar invite email to all 8 members; un-finalizing sends a `METHOD:CANCEL` update so the event is removed from members' calendars.
 
 ## Screens
 
@@ -114,6 +116,8 @@ availability (
 meetings (
   id uuid primary key default gen_random_uuid(),
   date date unique not null,      -- must be Mon-Thu
+  start_time time not null default '16:00:00',   -- Bermuda local
+  end_time   time not null default '20:00:00',   -- Bermuda local; CHECK end_time > start_time
   location text,
   notes text,
   finalized_by uuid references users(id),
@@ -125,16 +129,20 @@ Stage 2 will add a `one_on_one_meetings` table later. Don't build it now, but do
 
 ## Email Notifications
 
+Implemented in `src/lib/email/meeting-invite.ts`. Both finalize and cancel emails are sent best-effort — the DB write is the source of truth, so an email failure is logged but does not roll back the meeting state.
+
 **When a meeting is finalized**, email all 8 members:
-- Subject: `Forum meeting confirmed: [Day, Date]`
-- Body: date, time (4–8pm), location (if set), link back to the app.
-- Attach a `.ics` calendar invite (timezone `Atlantic/Bermuda`) so members can add it to their calendar with one tap.
+- From: `Magnificent8Forum <noreply@mail.virtuallegacy.ai>`
+- Subject: `Forum meeting confirmed: [Day, DD Month YYYY]`
+- Body: date, time range (custom per meeting, default 4–8pm), location (if set), notes (if set), confirmed-by name, link back to the app.
+- Attachment: `.ics` with `METHOD:REQUEST`, `STATUS:CONFIRMED`, `TZID=Atlantic/Bermuda` (with VTIMEZONE block), the meeting row's `id` as the iCal `UID`, the moderator as `ORGANIZER`, and all member emails as `ATTENDEE` rows.
 
 **When a meeting is un-finalized**, email all 8 members:
-- Subject: `Forum meeting cancelled: [Day, Date]`
-- Body: brief explanation provided by the moderator.
+- Subject: `Forum meeting cancelled: [Day, DD Month YYYY]`
+- Body: cancellation note plus the optional reason captured from the cancel dialog.
+- Attachment: `.ics` with `METHOD:CANCEL`, `STATUS:CANCELLED`, same UID and incremented `SEQUENCE`, so the event is removed from recipients' calendars.
 
-Email provider: **Resend** (free tier handles this volume easily).
+Email provider: **Resend**. Requires `RESEND_API_KEY` in the environment.
 
 ## Time Zone
 
