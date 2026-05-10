@@ -27,8 +27,11 @@ The moderator role is a boolean flag on a user, not hardcoded. It must be transf
 
 ## Authentication
 
-- Magic-link login via email (Supabase Auth).
-- Only emails on the approved member list can sign in. Anyone else is rejected at the login step.
+- 6-digit OTP code login via email (Supabase Auth). The login page is a two-step form: enter email → receive a code by email → enter code to sign in.
+- We do **not** use magic links. Microsoft 365 / Defender environments pre-click links in inbound mail (link safety scanning), which consumes Supabase's single-use token before the real recipient ever clicks it. OTP codes work everywhere because the user types them in.
+- The Supabase email templates (Magic Link and Invite User) deliver `{{ .Token }}` — the 6-digit code — instead of `{{ .ConfirmationURL }}`.
+- Only emails on the approved member list can sign in. The allowlist (`is_email_allowed` RPC) is checked **before** the OTP is sent. Anyone else is rejected at step 1.
+- `/auth/callback` is retained as a fallback so any stale magic-link clicks still resolve, but the primary auth path no longer goes through it.
 - The moderator manages the member list.
 
 ### Onboarding new members
@@ -37,9 +40,9 @@ The moderator adds members from inside the app (no more manual rows in the Supab
 
 1. On `/members`, the moderator clicks **Add member** (top-right of the page).
 2. Fills in the new member's email + name, optionally toggles "Make moderator", submits.
-3. The `inviteMember` server action (`src/app/members/actions.ts`) verifies the caller is a moderator, then calls `supabase.auth.admin.inviteUserByEmail(email, { redirectTo: '<origin>/auth/callback?next=/' })` via the service-role admin client. Supabase creates the `auth.users` row and sends the invite email through the configured SMTP (Resend).
+3. The `inviteMember` server action (`src/app/members/actions.ts`) verifies the caller is a moderator, then calls `supabase.auth.admin.inviteUserByEmail(email, { redirectTo: '<origin>/auth/callback?next=/' })` via the service-role admin client. Supabase creates the `auth.users` row and sends the invite email through the configured SMTP (Resend). The invite email contains a 6-digit OTP code (not a clickable link).
 4. The action also INSERTs a matching row into `public.users` so the allowlist check (`is_email_allowed` from migration 002) lets the new member sign in.
-5. The new member receives the email, clicks the link, lands on `/auth/callback`, gets a session, and is redirected to the home page. From there they can mark availability and view other members.
+5. The new member opens the forum URL, enters their email on `/login`, then types the 6-digit code from the invite email. On success they land on the home page signed in. From there they can mark availability and view other members. (The `redirectTo` is kept on the invite for fallback only — the primary flow no longer uses `/auth/callback`.)
 
 If the `public.users` insert fails after the auth row is created, we log it and return success — the auth row still exists, but the member won't pass the allowlist check until the row is added (manually via Table Editor, or by re-running the invite which will fail with "already a member" — in that case, fix the `public.users` row by hand).
 
