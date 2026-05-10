@@ -16,12 +16,13 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -47,20 +48,47 @@ export default function LoginPage() {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
+      options: { shouldCreateUser: false },
     });
 
     setLoading(false);
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setSubmitted(true);
+    if (otpError) {
+      setError(otpError.message);
+      return;
     }
+
+    setStep("code");
+  }
+
+  async function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const supabase = createClient();
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: "email",
+    });
+
+    if (verifyError) {
+      setLoading(false);
+      setError("That code didn't work. Check the email or request a new one.");
+      return;
+    }
+
+    // Full navigation so the server-rendered home page sees the new auth cookies.
+    window.location.href = "/";
+  }
+
+  function handleBack() {
+    setStep("email");
+    setCode("");
+    setError("");
   }
 
   return (
@@ -71,22 +99,14 @@ export default function LoginPage() {
             Magnificent8Forum
           </CardTitle>
           <CardDescription>
-            Enter your email to get a sign-in link.
+            {step === "email"
+              ? "Enter your email to get a sign-in code."
+              : "Enter the 6-digit code we just emailed you."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {submitted ? (
-            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <AlertTitle>Check your email</AlertTitle>
-              <AlertDescription className="text-emerald-800">
-                We just sent a sign-in link to{" "}
-                <span className="font-medium">{email}</span>. The link works in
-                any browser.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+          {step === "email" ? (
+            <form onSubmit={handleEmailSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email address</Label>
                 <Input
@@ -102,8 +122,63 @@ export default function LoginPage() {
               </div>
 
               <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Sending…" : "Send me a sign-in link"}
+                {loading ? "Sending…" : "Send sign-in code"}
               </Button>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={handleCodeSubmit} className="space-y-4">
+              <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <AlertTitle>Check your email</AlertTitle>
+                <AlertDescription className="text-emerald-800">
+                  We sent a code to{" "}
+                  <span className="font-medium">{email}</span>. Check your
+                  inbox (including spam) and enter the 6-digit code below.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label htmlFor="code">6-digit code</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) =>
+                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  disabled={loading}
+                  className="text-center text-2xl tracking-[0.5em]"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading || code.length !== 6}
+                className="w-full"
+              >
+                {loading ? "Signing in…" : "Sign in"}
+              </Button>
+
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={loading}
+                className="block w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+              >
+                Use a different email
+              </button>
 
               {error && (
                 <Alert variant="destructive">

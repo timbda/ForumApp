@@ -171,7 +171,11 @@ export async function inviteMember(
   const redirectTo = `${proto}://${host}/auth/callback?next=/`;
 
   // 5. Send the invite via Supabase admin API. This creates auth.users and
-  //    fires the invite email through the configured SMTP.
+  //    fires the invite email through the configured SMTP. The invite email
+  //    template now delivers a 6-digit OTP code (not a clickable link); the
+  //    new member's flow is: receive email with code → open the forum URL →
+  //    enter their email on /login → enter the code → signed in. The
+  //    redirectTo is kept for legacy fallback only — see /auth/callback.
   const { data: invited, error: inviteErr } =
     await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
   if (inviteErr) {
