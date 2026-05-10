@@ -165,7 +165,7 @@ export function Calendar({
         toast.success(`Meeting finalized for ${formatLongDate(dateISO)}`);
       } catch (err) {
         console.error("Meeting finalize failed:", err);
-        toast.error("Couldn't finalize the meeting. Please try again.");
+        toast.error(`Couldn't finalize the meeting: ${describeError(err)}`);
       }
     });
   }
@@ -181,7 +181,7 @@ export function Calendar({
         toast.success(`Meeting cancelled for ${formatLongDate(dateISO)}`);
       } catch (err) {
         console.error("Meeting cancel failed:", err);
-        toast.error("Couldn't cancel the meeting. Please try again.");
+        toast.error(`Couldn't cancel the meeting: ${describeError(err)}`);
       }
     });
   }
@@ -833,6 +833,29 @@ function CancelMeetingDialog({
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
+}
+
+// In dev, surface the underlying message so we can see exactly what blew up
+// (Postgres constraint, missing column, RLS denial, etc.). In prod, Next.js
+// strips server-action error messages but exposes a stable `digest` we can
+// cross-reference with server logs.
+function describeError(err: unknown): string {
+  if (process.env.NODE_ENV !== "production") {
+    if (err instanceof Error && err.message) return err.message;
+    if (typeof err === "string") return err;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  if (err && typeof err === "object" && "digest" in err) {
+    const d = (err as { digest?: unknown }).digest;
+    if (typeof d === "string" && d.length > 0) {
+      return `please try again (ref: ${d})`;
+    }
+  }
+  return "please try again";
 }
 
 function UpcomingMeetingsCard({
