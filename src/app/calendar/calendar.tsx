@@ -381,7 +381,6 @@ export function Calendar({
                 const isPast = iso < todayISO;
 
                 const notes = optimisticNotes[iso] ?? [];
-                const hasNote = notes.length > 0;
 
                 if (view === "mine") {
                   return renderMineCell({
@@ -391,7 +390,7 @@ export function Calendar({
                     isFinalized,
                     isToday,
                     isPast,
-                    hasNote,
+                    notes,
                     onClick: () => handleMineToggle(iso),
                   });
                 }
@@ -447,18 +446,19 @@ function renderMineCell(args: {
   isFinalized: boolean;
   isToday: boolean;
   isPast: boolean;
-  hasNote: boolean;
+  notes: NoteEntry[];
   onClick: () => void;
 }) {
-  const { key, cell, isAvail, isFinalized, isToday, isPast, hasNote, onClick } =
+  const { key, cell, isAvail, isFinalized, isToday, isPast, notes, onClick } =
     args;
+  const hasNote = notes.length > 0;
   return (
     <button
       key={key}
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border text-base font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg border px-1 text-base font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         // Finalized takes precedence over the avail/unavail styling so the
         // confirmed-meeting state is unmistakable in either view.
         isFinalized
@@ -473,26 +473,25 @@ function renderMineCell(args: {
       aria-pressed={isAvail}
       aria-label={`${cell.iso}${isAvail ? " (available)" : " (unavailable)"}${
         isFinalized ? " (finalized meeting)" : ""
-      }${hasNote ? " (has notes)" : ""}`}
+      }${hasNote ? ` (note: ${notes[0].text})` : ""}`}
     >
       <span>{cell.day}</span>
+      {hasNote && <NotePreview notes={notes} />}
       {isFinalized && (
         <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
       )}
-      {hasNote && <NoteDot inverted={isFinalized} />}
     </button>
   );
 }
 
-function NoteDot({ inverted }: { inverted: boolean }) {
+function NotePreview({ notes }: { notes: NoteEntry[] }) {
+  const first = notes[0];
+  const extra = notes.length - 1;
   return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full",
-        inverted ? "bg-white/90" : "bg-amber-500"
-      )}
-    />
+    <div className="flex w-full items-baseline justify-center gap-0.5 text-[10px] leading-tight opacity-80">
+      <span className="min-w-0 truncate font-normal">{first.text}</span>
+      {extra > 0 && <span className="shrink-0 font-semibold">+{extra}</span>}
+    </div>
   );
 }
 
@@ -536,12 +535,12 @@ function GroupCell(args: {
   const hasNote = notes.length > 0;
   const label = `${cell.iso}: ${availCount} of ${totalMembers} available${
     isFinalized ? " (finalized meeting)" : ""
-  }${hasNote ? " (has notes)" : ""}`;
+  }${hasNote ? ` (note: ${notes[0].text})` : ""}`;
   const countText =
     totalMembers > 0 ? `${availCount}/${totalMembers}` : String(availCount);
 
   const cls = cn(
-    "relative flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
+    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg border border-transparent px-1 leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
     // Finalized fill overrides the heatmap so the cell reads as "confirmed
     // meeting" regardless of how many members were available.
     isFinalized ? "bg-blue-700 text-white" : heat,
@@ -554,12 +553,13 @@ function GroupCell(args: {
       <PopoverTrigger asChild>
         <button type="button" className={cls} aria-label={label}>
           <span className="text-base font-semibold">{cell.day}</span>
-          {isFinalized ? (
-            <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
-          ) : (
+          {!isFinalized && (
             <span className="text-[10px] font-medium opacity-90">{countText}</span>
           )}
-          {hasNote && <NoteDot inverted={isFinalized} />}
+          {hasNote && <NotePreview notes={notes} />}
+          {isFinalized && (
+            <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
