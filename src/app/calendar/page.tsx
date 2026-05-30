@@ -44,6 +44,7 @@ export default async function CalendarPage() {
     meetingsRes,
     allUsersRes,
     profileRes,
+    notesRes,
   ] = await Promise.all([
     supabase
       .from("availability")
@@ -64,6 +65,11 @@ export default async function CalendarPage() {
       .select("is_moderator")
       .eq("id", user.id)
       .maybeSingle(),
+    supabase
+      .from("date_notes")
+      .select("note_date, author_id, note_text")
+      .gte("note_date", startISO)
+      .lte("note_date", endISO),
   ]);
 
   const allAvail = allAvailRes.data ?? [];
@@ -125,6 +131,29 @@ export default async function CalendarPage() {
     last_reviewed_at: (u.last_reviewed_at as string | null) ?? null,
   }));
 
+  // Per-date list of notes. Author display name is resolved against the
+  // already-loaded users list (nameById); orphaned author_ids fall back to
+  // "(unknown)" rather than dropping the note.
+  const notesByDate: Record<
+    string,
+    { authorId: string; authorName: string; text: string }[]
+  > = {};
+  for (const row of notesRes.data ?? []) {
+    const authorId = row.author_id as string;
+    const authorName = nameById.get(authorId) ?? "(unknown)";
+    const entry = {
+      authorId,
+      authorName,
+      text: row.note_text as string,
+    };
+    (notesByDate[row.note_date as string] ??= []).push(entry);
+  }
+  for (const d of Object.keys(notesByDate)) {
+    notesByDate[d].sort((a, b) => a.authorName.localeCompare(b.authorName));
+  }
+
+  const currentUserName = nameById.get(user.id) ?? "You";
+
   return (
     <AppShell>
       <Calendar
@@ -136,6 +165,9 @@ export default async function CalendarPage() {
         isModerator={isModerator}
         reviewedRecentlyCount={reviewedRecentlyCount}
         memberStatuses={memberStatuses}
+        notesByDate={notesByDate}
+        currentUserId={user.id}
+        currentUserName={currentUserName}
       />
     </AppShell>
   );

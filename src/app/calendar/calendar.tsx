@@ -1,7 +1,14 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
-import { Calendar as CalendarIcon, CheckCircle2, ChevronDown, Clock } from "lucide-react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
+import {
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -50,6 +57,7 @@ import {
   unfinalizeMeeting,
   type FinalizeMeetingInput,
 } from "./meeting-actions";
+import { upsertDateNote, deleteDateNote } from "./note-actions";
 import { formatLocalISO } from "./dates";
 
 type MemberStatus = { name: string; last_reviewed_at: string | null };
@@ -61,6 +69,12 @@ export type MeetingDetails = {
   location: string | null;
 };
 
+export type NoteEntry = {
+  authorId: string;
+  authorName: string;
+  text: string;
+};
+
 type CalendarProps = {
   availableDates: string[];
   availabilityCounts: Record<string, number>;
@@ -70,9 +84,13 @@ type CalendarProps = {
   isModerator: boolean;
   reviewedRecentlyCount: number;
   memberStatuses: MemberStatus[];
+  notesByDate: Record<string, NoteEntry[]>;
+  currentUserId: string;
+  currentUserName: string;
 };
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const NOTE_MAX_LEN = 100;
 
 type Cell = { day: number; iso: string } | null;
 type Month = { year: number; month: number; cells: Cell[] };
@@ -80,6 +98,9 @@ type Month = { year: number; month: number; cells: Cell[] };
 type View = "mine" | "group";
 type AvailAction = { date: string; mark: "available" | "unavailable" };
 type FinalizedAction = { date: string; op: "add" | "remove" };
+type NoteAction =
+  | { kind: "upsert"; date: string; entry: NoteEntry }
+  | { kind: "delete"; date: string; authorId: string };
 
 const DEFAULT_START_TIME = "16:00";
 const DEFAULT_END_TIME = "20:00";
@@ -93,6 +114,9 @@ export function Calendar({
   isModerator,
   reviewedRecentlyCount,
   memberStatuses,
+  notesByDate,
+  currentUserId,
+  currentUserName,
 }: CalendarProps) {
   const meetingsByDate = new Map(meetings.map((m) => [m.date, m]));
   const finalizedDates = meetings.map((m) => m.date);
@@ -119,6 +143,28 @@ export function Calendar({
     const next = new Set(state);
     if (action.op === "add") next.add(action.date);
     else next.delete(action.date);
+    return next;
+  });
+
+  const [optimisticNotes, applyNote] = useOptimistic<
+    Record<string, NoteEntry[]>,
+    NoteAction
+  >(notesByDate, (state, action) => {
+    const next = { ...state };
+    const existing = next[action.date] ? [...next[action.date]] : [];
+    if (action.kind === "upsert") {
+      const idx = existing.findIndex(
+        (n) => n.authorId === action.entry.authorId
+      );
+      if (idx >= 0) existing[idx] = action.entry;
+      else existing.push(action.entry);
+      existing.sort((a, b) => a.authorName.localeCompare(b.authorName));
+      next[action.date] = existing;
+    } else {
+      const filtered = existing.filter((n) => n.authorId !== action.authorId);
+      if (filtered.length === 0) delete next[action.date];
+      else next[action.date] = filtered;
+    }
     return next;
   });
 
@@ -166,6 +212,42 @@ export function Calendar({
       } catch (err) {
         console.error("Meeting finalize failed:", err);
         toast.error(`Couldn't finalize the meeting: ${describeError(err)}`);
+      }
+    });
+  }
+
+  function handleUpsertNote(dateISO: string, text: string) {
+    startTransition(async () => {
+      applyNote({
+        kind: "upsert",
+        date: dateISO,
+        entry: {
+          authorId: currentUserId,
+          authorName: currentUserName,
+          text,
+        },
+      });
+      try {
+        await upsertDateNote(dateISO, text);
+      } catch (err) {
+        console.error("Save note failed:", err);
+        toast.error(`Couldn't save the note: ${describeError(err)}`);
+      }
+    });
+  }
+
+  function handleDeleteNote(dateISO: string) {
+    startTransition(async () => {
+      applyNote({
+        kind: "delete",
+        date: dateISO,
+        authorId: currentUserId,
+      });
+      try {
+        await deleteDateNote(dateISO);
+      } catch (err) {
+        console.error("Delete note failed:", err);
+        toast.error(`Couldn't delete the note: ${describeError(err)}`);
       }
     });
   }
@@ -298,6 +380,9 @@ export function Calendar({
                 const isToday = iso === todayISO;
                 const isPast = iso < todayISO;
 
+                const notes = optimisticNotes[iso] ?? [];
+                const hasNote = notes.length > 0;
+
                 if (view === "mine") {
                   return renderMineCell({
                     key: i,
@@ -306,6 +391,7 @@ export function Calendar({
                     isFinalized,
                     isToday,
                     isPast,
+                    hasNote,
                     onClick: () => handleMineToggle(iso),
                   });
                 }
@@ -327,7 +413,11 @@ export function Calendar({
                     availableNames={availabilityByDate[iso] ?? []}
                     meeting={meetingsByDate.get(iso) ?? null}
                     memberStatuses={memberStatuses}
+                    notes={notes}
+                    currentUserId={currentUserId}
                     onAction={() => openConfirmFromPopover(iso)}
+                    onSaveNote={(text) => handleUpsertNote(iso, text)}
+                    onDeleteNote={() => handleDeleteNote(iso)}
                   />
                 );
               })}
@@ -357,16 +447,18 @@ function renderMineCell(args: {
   isFinalized: boolean;
   isToday: boolean;
   isPast: boolean;
+  hasNote: boolean;
   onClick: () => void;
 }) {
-  const { key, cell, isAvail, isFinalized, isToday, isPast, onClick } = args;
+  const { key, cell, isAvail, isFinalized, isToday, isPast, hasNote, onClick } =
+    args;
   return (
     <button
       key={key}
       type="button"
       onClick={onClick}
       className={cn(
-        "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border text-base font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "relative flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border text-base font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         // Finalized takes precedence over the avail/unavail styling so the
         // confirmed-meeting state is unmistakable in either view.
         isFinalized
@@ -381,13 +473,26 @@ function renderMineCell(args: {
       aria-pressed={isAvail}
       aria-label={`${cell.iso}${isAvail ? " (available)" : " (unavailable)"}${
         isFinalized ? " (finalized meeting)" : ""
-      }`}
+      }${hasNote ? " (has notes)" : ""}`}
     >
       <span>{cell.day}</span>
       {isFinalized && (
         <CalendarIcon className="h-3 w-3 opacity-90" aria-hidden="true" />
       )}
+      {hasNote && <NoteDot inverted={isFinalized} />}
     </button>
+  );
+}
+
+function NoteDot({ inverted }: { inverted: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full",
+        inverted ? "bg-white/90" : "bg-amber-500"
+      )}
+    />
   );
 }
 
@@ -403,7 +508,11 @@ function GroupCell(args: {
   availableNames: string[];
   meeting: MeetingDetails | null;
   memberStatuses: MemberStatus[];
+  notes: NoteEntry[];
+  currentUserId: string;
   onAction: () => void;
+  onSaveNote: (text: string) => void;
+  onDeleteNote: () => void;
 }) {
   const {
     cell,
@@ -417,17 +526,22 @@ function GroupCell(args: {
     availableNames,
     meeting,
     memberStatuses,
+    notes,
+    currentUserId,
     onAction,
+    onSaveNote,
+    onDeleteNote,
   } = args;
   const heat = heatmapClasses(availCount, totalMembers);
+  const hasNote = notes.length > 0;
   const label = `${cell.iso}: ${availCount} of ${totalMembers} available${
     isFinalized ? " (finalized meeting)" : ""
-  }`;
+  }${hasNote ? " (has notes)" : ""}`;
   const countText =
     totalMembers > 0 ? `${availCount}/${totalMembers}` : String(availCount);
 
   const cls = cn(
-    "flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
+    "relative flex aspect-square min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-lg border border-transparent leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 hover:opacity-90",
     // Finalized fill overrides the heatmap so the cell reads as "confirmed
     // meeting" regardless of how many members were available.
     isFinalized ? "bg-blue-700 text-white" : heat,
@@ -445,6 +559,7 @@ function GroupCell(args: {
           ) : (
             <span className="text-[10px] font-medium opacity-90">{countText}</span>
           )}
+          {hasNote && <NoteDot inverted={isFinalized} />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 p-0">
@@ -455,7 +570,11 @@ function GroupCell(args: {
           isFinalized={isFinalized}
           meeting={meeting}
           isModerator={isModerator}
+          notes={notes}
+          currentUserId={currentUserId}
           onAction={onAction}
+          onSaveNote={onSaveNote}
+          onDeleteNote={onDeleteNote}
         />
       </PopoverContent>
     </Popover>
@@ -469,7 +588,11 @@ function GroupCellPopoverBody({
   isFinalized,
   meeting,
   isModerator,
+  notes,
+  currentUserId,
   onAction,
+  onSaveNote,
+  onDeleteNote,
 }: {
   iso: string;
   availableNames: string[];
@@ -477,7 +600,11 @@ function GroupCellPopoverBody({
   isFinalized: boolean;
   meeting: MeetingDetails | null;
   isModerator: boolean;
+  notes: NoteEntry[];
+  currentUserId: string;
   onAction: () => void;
+  onSaveNote: (text: string) => void;
+  onDeleteNote: () => void;
 }) {
   const availableSet = new Set(availableNames);
   const nowMs = Date.now();
@@ -530,6 +657,14 @@ function GroupCellPopoverBody({
           </div>
         </div>
       )}
+
+      <NotesSection
+        iso={iso}
+        notes={notes}
+        currentUserId={currentUserId}
+        onSave={onSaveNote}
+        onDelete={onDeleteNote}
+      />
 
       <div className="px-4 py-3">
         {available.length > 0 && (
@@ -605,6 +740,163 @@ function GroupCellPopoverBody({
             {isFinalized ? "Cancel this meeting" : "Finalize this meeting"}
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function NotesSection({
+  iso,
+  notes,
+  currentUserId,
+  onSave,
+  onDelete,
+}: {
+  iso: string;
+  notes: NoteEntry[];
+  currentUserId: string;
+  onSave: (text: string) => void;
+  onDelete: () => void;
+}) {
+  const myNote = notes.find((n) => n.authorId === currentUserId) ?? null;
+  const otherNotes = notes.filter((n) => n.authorId !== currentUserId);
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(myNote?.text ?? "");
+
+  // If the popover instance is reused for a different date — or the underlying
+  // note changes from elsewhere — keep the draft in sync with reality.
+  useEffect(() => {
+    setEditing(false);
+    setDraft(myNote?.text ?? "");
+  }, [iso, myNote?.text]);
+
+  const trimmed = draft.trim();
+  const canSave =
+    editing &&
+    trimmed.length > 0 &&
+    trimmed.length <= NOTE_MAX_LEN &&
+    trimmed !== (myNote?.text ?? "");
+
+  function handleStartEdit() {
+    setDraft(myNote?.text ?? "");
+    setEditing(true);
+  }
+
+  function handleCancel() {
+    setEditing(false);
+    setDraft(myNote?.text ?? "");
+  }
+
+  function handleSave() {
+    if (!canSave) return;
+    onSave(trimmed);
+    setEditing(false);
+  }
+
+  function handleDelete() {
+    onDelete();
+    setEditing(false);
+    setDraft("");
+  }
+
+  const hasAny = notes.length > 0;
+
+  return (
+    <div className="border-b px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Notes
+      </p>
+
+      {hasAny ? (
+        <ul className="mt-1.5 space-y-1.5">
+          {otherNotes.map((n) => (
+            <li
+              key={n.authorId}
+              className="text-sm leading-snug text-foreground"
+            >
+              <span className="break-words">{n.text}</span>
+              <span className="text-muted-foreground"> — {n.authorName}</span>
+            </li>
+          ))}
+          {myNote && !editing && (
+            <li className="flex items-start justify-between gap-2 text-sm leading-snug text-foreground">
+              <span className="min-w-0 break-words">
+                {myNote.text}
+                <span className="text-muted-foreground"> — You</span>
+              </span>
+              <span className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={handleStartEdit}
+                  aria-label="Edit your note"
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  aria-label="Delete your note"
+                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </span>
+            </li>
+          )}
+        </ul>
+      ) : (
+        !editing && (
+          <p className="mt-1.5 text-sm text-muted-foreground">No notes yet.</p>
+        )
+      )}
+
+      {editing ? (
+        <div className="mt-2 space-y-1.5">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.slice(0, NOTE_MAX_LEN))}
+            placeholder="Short note (e.g. Conference in NYC)"
+            rows={2}
+            aria-label={`Note for ${iso}`}
+          />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {trimmed.length}/{NOTE_MAX_LEN}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleCancel}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={!canSave}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        !myNote && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleStartEdit}
+            className="mt-2 w-full"
+          >
+            Add a note
+          </Button>
+        )
       )}
     </div>
   );
