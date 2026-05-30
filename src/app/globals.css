@@ -5,7 +5,9 @@
 @layer base {
   :root {
     /* Slate-based neutrals from shadcn defaults */
-    --background: 0 0% 100%;
+    /* Page background = Tailwind slate-50 (#f8fafc). Cards and popovers
+       stay white (see --card / --popover below) so they lift off the page. */
+    --background: 210 40% 98%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;

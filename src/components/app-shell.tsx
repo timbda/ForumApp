@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-30 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <header className="sticky top-0 z-30 w-full border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="font-semibold tracking-tight">
           Magnificent8Forum
