@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CalendarDays, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -82,6 +83,7 @@ export function MembersList({
           : m
       )
   );
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -155,6 +157,11 @@ export function MembersList({
                 isSelf={m.id === currentUserId}
                 currentUserIsModerator={currentUserIsModerator}
                 onEdit={() => setEditing(m.id)}
+                onOpenAvailability={
+                  currentUserIsModerator
+                    ? () => router.push(`/members/${m.id}/availability`)
+                    : undefined
+                }
               />
             ))}
           </ul>
@@ -324,16 +331,21 @@ function MemberRow({
   isSelf,
   currentUserIsModerator,
   onEdit,
+  onOpenAvailability,
 }: {
   member: Member;
   isSelf: boolean;
   currentUserIsModerator: boolean;
   onEdit: () => void;
+  // Set for moderators only: tapping the row opens that member's availability
+  // editor. Undefined for non-moderators, who keep the static (non-clickable)
+  // row.
+  onOpenAvailability?: () => void;
 }) {
   const canEdit = isSelf || currentUserIsModerator;
 
-  return (
-    <li className="flex items-center gap-3 px-4 py-3 sm:px-5">
+  const details = (
+    <>
       <Avatar className="h-10 w-10 shrink-0">
         <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
           {initialsFromName(member.name)}
@@ -352,13 +364,49 @@ function MemberRow({
           )}
         </div>
         <p className="truncate text-xs text-muted-foreground">{member.email}</p>
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex items-center gap-2">
           <ReviewedBadge iso={member.last_reviewed_at} />
+          {onOpenAvailability && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              Edit availability
+            </span>
+          )}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 sm:px-5">
+      {onOpenAvailability ? (
+        <button
+          type="button"
+          onClick={onOpenAvailability}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label={`Edit ${member.name}'s availability`}
+        >
+          {details}
+          <ChevronRight
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-3">{details}</div>
+      )}
 
       {canEdit && (
-        <Button variant="outline" size="sm" onClick={onEdit}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={(e) => {
+            // Don't let the click bubble to the row's navigation handler.
+            e.stopPropagation();
+            onEdit();
+          }}
+        >
           Edit
         </Button>
       )}

@@ -58,7 +58,7 @@ import {
   type FinalizeMeetingInput,
 } from "./meeting-actions";
 import { upsertDateNote, deleteDateNote } from "./note-actions";
-import { formatLocalISO } from "./dates";
+import { formatLocalISO, generateMonths, monthLabel } from "./dates";
 
 type MemberStatus = { name: string; last_reviewed_at: string | null };
 
@@ -91,9 +91,6 @@ type CalendarProps = {
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const NOTE_MAX_LEN = 100;
-
-type Cell = { day: number; iso: string } | null;
-type Month = { year: number; month: number; cells: Cell[] };
 
 type View = "mine" | "group";
 type AvailAction = { date: string; mark: "available" | "unavailable" };
@@ -1294,43 +1291,3 @@ function formatLongDate(iso: string): string {
   });
 }
 
-function monthLabel(year: number, month: number): string {
-  return new Date(year, month, 1).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function generateMonths(start: Date, count: number): Month[] {
-  const out: Month[] = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
-    const year = d.getFullYear();
-    const month = d.getMonth();
-    const lastDay = new Date(year, month + 1, 0).getDate();
-
-    const cells: Cell[] = [];
-    let row: Cell[] = [null, null, null, null];
-    let rowHasContent = false;
-
-    for (let dayNum = 1; dayNum <= lastDay; dayNum++) {
-      const dt = new Date(year, month, dayNum);
-      const dow = dt.getDay();
-
-      if (dow === 1 && rowHasContent) {
-        cells.push(...row);
-        row = [null, null, null, null];
-        rowHasContent = false;
-      }
-
-      if (dow >= 1 && dow <= 4) {
-        row[dow - 1] = { day: dayNum, iso: formatLocalISO(dt) };
-        rowHasContent = true;
-      }
-    }
-    if (rowHasContent) cells.push(...row);
-
-    out.push({ year, month, cells });
-  }
-  return out;
-}
